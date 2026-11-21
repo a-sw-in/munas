@@ -28,7 +28,16 @@ export default function Footer() {
           CENTER BACKGROUND PORTRAIT (foot.png)
           Vignetted seamlessly into pure black on all four sides
       ═══════════════════════════════════════════════════════ */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 overflow-hidden">
+        {/* Atmospheric Red Glow in Image Background */}
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] sm:w-[950px] h-[550px] sm:h-[750px] rounded-full blur-[140px] pointer-events-none opacity-55"
+          style={{
+            background:
+              "radial-gradient(circle, rgba(239, 68, 68, 0.65) 0%, rgba(220, 38, 38, 0.3) 45%, transparent 72%)",
+          }}
+        />
+
         <div className="relative w-full max-w-[1240px] h-[75vh] md:h-[88vh]">
           <Image
             src="/assets/foot.png"
@@ -60,56 +69,49 @@ export default function Footer() {
         {/* Left: Brand / Logo */}
         <div className="flex items-center gap-2.5">
           {/* Custom Stylized P Glyph */}
-          <div className="w-5 h-5 flex items-center justify-center">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="w-4 h-4 text-white"
-            >
-              <path d="M6 3h7a5 5 0 0 1 0 10H6v8" />
-              <path d="M12 8h1" />
-            </svg>
-          </div>
-          <span className="text-[11px] sm:text-xs font-semibold tracking-[0.25em] text-white/90 uppercase font-mono">
-            PRINCE &middot; WEB KAIZEN
+          <span className="text-[11px] sm:text-xs font-semibold tracking-[0.25em] text-white/90  uppercase font-mono"
+          style={{
+            marginLeft: '10px',
+          }}
+          >
+            munas mk &middot; model & visual director
           </span>
         </div>
 
         {/* Center: Navigation Links */}
-        <nav className="hidden md:flex items-center gap-9 lg:gap-14 text-[11px] font-medium tracking-[0.22em] text-white/70 uppercase">
+        <nav className="hidden md:flex items-center gap-9 lg:gap-14 text-[11px] font-medium tracking-[0.22em] text-white/70 uppercase"
+        style={{
+          marginLeft: '5rem',
+        }}
+        >
           <a
             href="#home"
             className="hover:text-white transition-colors duration-200"
           >
-            HOME
+            INSTAGRAM
           </a>
           <a
             href="#about"
             className="hover:text-white transition-colors duration-200"
           >
-            ABOUT
+            ACID RECORD
           </a>
           <a
             href="#showcase"
             className="hover:text-white transition-colors duration-200"
           >
-            SHOWCASE
+            PINTREST
           </a>
           <a
             href="#contact"
             className="hover:text-white transition-colors duration-200"
           >
-            CONTACT
+            YOUTUBE
           </a>
         </nav>
 
         {/* Right: Digital Clock */}
         <div className="text-[11px] sm:text-xs font-mono font-medium tracking-wider text-white/60">
-          {currentTime}
         </div>
       </header>
 
@@ -135,22 +137,23 @@ export default function Footer() {
                 filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.85))",
               }}
             >
-              PRINCE
+              MUNAZ M K
             </h1>
           </div>
 
           {/* Right Side Editorial Serif Statement */}
           <div className="text-right pointer-events-auto md:pt-3 lg:pt-4">
             <h2
-              className="text-3xl sm:text-4xl md:text-5xl lg:text-[3.4rem] font-normal leading-[1.08] text-white/95 tracking-tight"
+              className="text-3xl  sm:text-4xl md:text-5xl lg:text-[3.4rem] font-normal leading-[1.08] text-white/95 tracking-tight"
               style={{
                 fontFamily:
                   "'Playfair Display', Didot, 'Bodoni MT', Georgia, serif",
+                  marginRight:'20px'
               }}
             >
               Creating
               <br />
-              Websites
+              Frames
               <br />
               That Feel
               <br />
@@ -163,24 +166,9 @@ export default function Footer() {
         <div className="w-full flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6 pt-12 sm:pt-16">
           {/* Bottom Left Descriptor */}
           <div className="pointer-events-auto max-w-sm sm:max-w-md">
-            <p className="text-xs sm:text-[13px] text-white/60 font-light leading-relaxed tracking-wide">
-              Turning creative ideas into interactive and
-              <br />
-              <span className="text-white font-medium">
-                high-quality web experiences.
-              </span>
+            <p className="text-xs sm:text-[14px] uppercase text-white/60 font-light leading-relaxed tracking-wide">
+              Turning creative ideas into interactive frames
             </p>
-          </div>
-
-          {/* Bottom Right Pill Action Button */}
-          <div className="pointer-events-auto self-start sm:self-auto">
-            <a
-              href="#contact"
-              className="inline-flex items-center gap-2.5 px-6 sm:px-7 py-2.5 rounded-full border border-white/20 hover:border-white/50 bg-white/[0.03] hover:bg-white/[0.08] transition-all text-xs font-mono font-medium tracking-widest text-white uppercase group cursor-pointer"
-            >
-              <span>WEBKAIZEN</span>
-              <ArrowUpRight className="w-3.5 h-3.5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-            </a>
           </div>
         </div>
       </div>

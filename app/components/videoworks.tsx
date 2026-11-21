@@ -13,6 +13,7 @@ import {
   Maximize2,
   Minimize2,
 } from "lucide-react";
+import Footer from "./footer";
 
 export interface VideoWorksProps {
   isExpanded?: boolean;
@@ -138,6 +139,31 @@ export default function VideoWorks({
   const [videoTime, setVideoTime] = useState("00:00");
   const [isCardHovered, setIsCardHovered] = useState(false);
 
+  // ── Footer Split-Reveal Expansion States (Center Slit Window) ──
+  const [footerProgress, setFooterProgress] = useState(0);
+  const footerProgressRef = useRef(0);
+  const targetFooterProgress = useRef(0);
+  const footerAnimFrame = useRef<number | null>(null);
+
+  const startFooterPhysics = useCallback(() => {
+    if (footerAnimFrame.current) return;
+
+    const tick = () => {
+      const diff = targetFooterProgress.current - footerProgressRef.current;
+      if (Math.abs(diff) < 0.0008) {
+        footerProgressRef.current = targetFooterProgress.current;
+        setFooterProgress(targetFooterProgress.current);
+        footerAnimFrame.current = null;
+        return;
+      }
+      footerProgressRef.current += diff * 0.14;
+      setFooterProgress(footerProgressRef.current);
+      footerAnimFrame.current = requestAnimationFrame(tick);
+    };
+
+    footerAnimFrame.current = requestAnimationFrame(tick);
+  }, []);
+
   // ── Zoom Pop-Out States ──
   const [isZoomed, setIsZoomed] = useState(false);
   const [zoomPhase, setZoomPhase] = useState<"idle" | "opening" | "open" | "closing">("idle");
@@ -238,6 +264,9 @@ export default function VideoWorks({
 
     setActiveIndex(targetIndex);
     setIsCardHovered(false);
+    targetFooterProgress.current = 0;
+    footerProgressRef.current = 0;
+    setFooterProgress(0);
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
 
     const step = (now: number) => {
@@ -282,7 +311,7 @@ export default function VideoWorks({
     return () => video.removeEventListener("timeupdate", handleTimeUpdate);
   }, []);
 
-  // Single small scroll triggers wave step to next/previous video
+  // Single small scroll triggers wave step to next/previous video OR footer transition at bottom
   useEffect(() => {
     if (!isExpanded || isZoomed) return;
 
@@ -293,6 +322,24 @@ export default function VideoWorks({
 
       // Ignore micro-jitters
       if (Math.abs(dy) < 6) return;
+
+      // ── PHASE: FOOTER EXPANDED OR EXPANDING ──
+      if (footerProgressRef.current > 0.001) {
+        if (dy > 0) {
+          // Scroll down: expand footer window more toward 1.0
+          if (targetFooterProgress.current < 1) {
+            const step = Math.max(0.04, Math.min(0.25, Math.abs(dy) * 0.0015));
+            targetFooterProgress.current = Math.min(1, targetFooterProgress.current + step);
+            startFooterPhysics();
+          }
+        } else {
+          // Scroll up: shrink footer window back toward 0.0
+          const step = Math.max(0.04, Math.min(0.25, Math.abs(dy) * 0.0015));
+          targetFooterProgress.current = Math.max(0, targetFooterProgress.current - step);
+          startFooterPhysics();
+        }
+        return;
+      }
 
       // If already transitioning, lock out momentum spam
       if (scrollLockRef.current) return;
@@ -305,6 +352,11 @@ export default function VideoWorks({
           setTimeout(() => {
             scrollLockRef.current = false;
           }, 560);
+        } else {
+          // Reached bottom of video works -> scroll down initiates Footer slit opening!
+          const step = Math.max(0.05, Math.min(0.25, Math.abs(dy) * 0.0015));
+          targetFooterProgress.current = Math.min(1, targetFooterProgress.current + step);
+          startFooterPhysics();
         }
       } else {
         // Scroll UP -> wave transition to previous video or return to carousel
@@ -323,9 +375,9 @@ export default function VideoWorks({
 
     window.addEventListener("wheel", handleWheel, { passive: true });
     return () => window.removeEventListener("wheel", handleWheel);
-  }, [isExpanded, isZoomed, goToProject, onReturn]);
+  }, [isExpanded, isZoomed, goToProject, onReturn, startFooterPhysics]);
 
-  // Touch gesture swipe: 1 swipe = 1 wave video transition
+  // Touch gesture swipe: 1 swipe = 1 wave video transition OR footer transition at bottom
   useEffect(() => {
     if (!isExpanded || isZoomed) return;
     let startY = 0;
@@ -341,16 +393,30 @@ export default function VideoWorks({
       if (Math.abs(dy) < 16) return;
 
       if (dy > 0) {
-        // Swipe UP -> next video
+        // Swipe UP -> next video OR footer opening at bottom
+        if (footerProgressRef.current > 0.001) {
+          targetFooterProgress.current = Math.min(1, targetFooterProgress.current + 0.2);
+          startFooterPhysics();
+          return;
+        }
         if (activeIndexRef.current < FEATURED_VIDEOS.length - 1) {
           scrollLockRef.current = true;
           goToProject(activeIndexRef.current + 1);
           setTimeout(() => {
             scrollLockRef.current = false;
           }, 560);
+        } else {
+          // Bottom reached -> open footer window
+          targetFooterProgress.current = Math.min(1, targetFooterProgress.current + 0.2);
+          startFooterPhysics();
         }
       } else {
-        // Swipe DOWN -> previous video
+        // Swipe DOWN -> previous video OR footer closing
+        if (footerProgressRef.current > 0.001) {
+          targetFooterProgress.current = Math.max(0, targetFooterProgress.current - 0.2);
+          startFooterPhysics();
+          return;
+        }
         if (activeIndexRef.current > 0) {
           scrollLockRef.current = true;
           goToProject(activeIndexRef.current - 1);
@@ -369,7 +435,7 @@ export default function VideoWorks({
       window.removeEventListener("touchstart", handleTouchStart);
       window.removeEventListener("touchmove", handleTouchMove);
     };
-  }, [isExpanded, isZoomed, goToProject, onReturn]);
+  }, [isExpanded, isZoomed, goToProject, onReturn, startFooterPhysics]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -381,6 +447,11 @@ export default function VideoWorks({
           closeZoom();
           return;
         }
+        if (footerProgressRef.current > 0.001) {
+          targetFooterProgress.current = 0;
+          startFooterPhysics();
+          return;
+        }
         if (onReturn) onReturn();
         return;
       }
@@ -388,11 +459,17 @@ export default function VideoWorks({
       if (isZoomed) return;
 
       if (e.key === "ArrowDown" || e.key === "PageDown") {
-        if (activeIndexRef.current < FEATURED_VIDEOS.length - 1) {
+        if (footerProgressRef.current > 0.001 || activeIndexRef.current === FEATURED_VIDEOS.length - 1) {
+          targetFooterProgress.current = Math.min(1, targetFooterProgress.current + 0.35);
+          startFooterPhysics();
+        } else if (activeIndexRef.current < FEATURED_VIDEOS.length - 1) {
           goToProject(activeIndexRef.current + 1);
         }
       } else if (e.key === "ArrowUp" || e.key === "PageUp") {
-        if (activeIndexRef.current > 0) {
+        if (footerProgressRef.current > 0.001) {
+          targetFooterProgress.current = Math.max(0, targetFooterProgress.current - 0.35);
+          startFooterPhysics();
+        } else if (activeIndexRef.current > 0) {
           goToProject(activeIndexRef.current - 1);
         } else if (onReturn) {
           onReturn();
@@ -402,7 +479,7 @@ export default function VideoWorks({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isExpanded, isZoomed, closeZoom, goToProject, onReturn]);
+  }, [isExpanded, isZoomed, closeZoom, goToProject, onReturn, startFooterPhysics]);
 
   // 3D Cylinder & Wave geometry parameters
   const cylinderRadius = 410;
@@ -433,8 +510,8 @@ export default function VideoWorks({
       <div
         className="fixed top-5 right-5 sm:top-7 sm:right-8 z-30 transition-all duration-300 pointer-events-auto"
         style={{
-          opacity: isZoomed ? 0 : 1,
-          pointerEvents: isZoomed ? "none" : "auto",
+          opacity: isZoomed ? 0 : Math.max(0, 1 - footerProgress * 2.5),
+          pointerEvents: isZoomed || footerProgress > 0.05 ? "none" : "auto",
           transform: isZoomed ? "scale(0.8)" : "scale(1)",
         }}
       >
@@ -457,14 +534,17 @@ export default function VideoWorks({
       >
         {/* ========================================================= */}
         {/* LEFT SIDE: 3D SLOW WAVE VIDEO MOVEMENT (CENTERED)         */}
+        {/* Swipes out to LEFT as footer expands                     */}
         {/* ========================================================= */}
         <section
-          className="relative w-full lg:w-1/2 h-[320px] sm:h-[400px] lg:h-[480px] flex items-center justify-center"
+          className="relative w-full lg:w-1/2 h-[320px] sm:h-[400px] lg:h-[480px] flex items-center justify-center will-change-transform"
           style={{
             perspective: "1200px",
             perspectiveOrigin: "50% 50%",
             transformStyle: "preserve-3d",
             marginLeft: "0rem",
+            transform: footerProgress > 0 ? `translateX(-${footerProgress * 115}%)` : undefined,
+            opacity: footerProgress > 0 ? Math.max(0, 1 - footerProgress * 1.3) : undefined,
           }}
           aria-label="Video Wheel"
         >
@@ -634,14 +714,17 @@ export default function VideoWorks({
 
         {/* ========================================================= */}
         {/* RIGHT SIDE: PURE TYPOGRAPHY (CENTERED SYMMETRICALLY)      */}
+        {/* Swipes out to RIGHT as footer expands                     */}
         {/* ========================================================= */}
         <section
-          className="relative w-full lg:w-1/2 h-[320px] sm:h-[400px] lg:h-[480px] flex items-center justify-center"
+          className="relative w-full lg:w-1/2 h-[320px] sm:h-[400px] lg:h-[480px] flex items-center justify-center will-change-transform"
           style={{
             perspective: "1200px",
             perspectiveOrigin: "50% 50%",
             transformStyle: "preserve-3d",
             marginLeft: "3rem",
+            transform: footerProgress > 0 ? `translateX(${footerProgress * 115}%)` : undefined,
+            opacity: footerProgress > 0 ? Math.max(0, 1 - footerProgress * 1.3) : undefined,
           }}
           aria-label="Project Text Showcase"
         >
@@ -695,7 +778,11 @@ export default function VideoWorks({
       {/* RIGHT MARGIN: MINIMAL POSITION WHEEL TRACK (OUTSIDE MAIN) */}
       {/* ========================================================= */}
       <aside
-        className="hidden md:flex flex-col items-center gap-3 fixed right-6 sm:right-8 top-1/2 -translate-y-1/2 z-30"
+        className="hidden md:flex flex-col items-center gap-3 fixed right-6 sm:right-8 top-1/2 -translate-y-1/2 z-30 transition-opacity duration-300"
+        style={{
+          opacity: footerProgress > 0 ? Math.max(0, 1 - footerProgress * 2.5) : 1,
+          pointerEvents: footerProgress > 0.05 ? "none" : "auto",
+        }}
         aria-label="Wheel Navigator"
       >
           <button
@@ -908,6 +995,49 @@ export default function VideoWorks({
           </div>
         );
       })()}
+
+      {/* ========================================================= */}
+      {/* FOOTER SPLIT-REVEAL EXPANDING WINDOW                      */}
+      {/* Opens as a vertical line in center and widens to fullscreen*/}
+      {/* ========================================================= */}
+      {footerProgress > 0 && (
+        <div
+          className="fixed inset-0 z-50 overflow-hidden"
+          style={{
+            clipPath: `inset(0% ${50 * (1 - footerProgress)}% 0% ${50 * (1 - footerProgress)}%)`,
+            pointerEvents: footerProgress >= 0.85 ? "auto" : "none",
+          }}
+        >
+          <div className="w-[100vw] h-[100vh] min-h-screen overflow-y-auto">
+            <Footer />
+          </div>
+        </div>
+      )}
+
+      {/* Center slit vertical laser line(s) during opening/closing */}
+      {footerProgress > 0 && footerProgress < 0.995 && (
+        <>
+          {footerProgress < 0.035 ? (
+            /* Single razor-sharp glowing vertical line in the exact center */
+            <div
+              className="fixed top-0 bottom-0 left-1/2 -translate-x-1/2 w-[2px] bg-white shadow-[0_0_15px_#ffffff,0_0_35px_rgba(255,255,255,0.9)] pointer-events-none z-50"
+              style={{ opacity: Math.min(1, footerProgress * 40) }}
+            />
+          ) : (
+            /* Dual splitting boundary lines moving outward as the window widens */
+            <>
+              <div
+                className="fixed top-0 bottom-0 pointer-events-none z-50 w-[1.5px] bg-white/85 shadow-[0_0_14px_rgba(255,255,255,0.8)]"
+                style={{ left: `calc(50% - ${50 * footerProgress}%)` }}
+              />
+              <div
+                className="fixed top-0 bottom-0 pointer-events-none z-50 w-[1.5px] bg-white/85 shadow-[0_0_14px_rgba(255,255,255,0.8)]"
+                style={{ left: `calc(50% + ${50 * footerProgress}%)` }}
+              />
+            </>
+          )}
+        </>
+      )}
 
     </div>
   );
