@@ -162,7 +162,12 @@ export default function Work({
         return;
       }
       const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-      const ease = isMobile ? 0.18 : 0.15;
+      const baseEase = isMobile ? 0.18 : 0.15;
+
+      // When expanding into fullscreen VideoWorks, increase speed by 20%
+      const isExpanding = targetPos.current >= EXPAND_END - 0.05;
+      const ease = isExpanding ? baseEase * 1.20 : baseEase;
+
       currentPosRef.current += diff * ease;
       setCurrentPos(currentPosRef.current);
       animFrame.current = requestAnimationFrame(tick);
@@ -181,11 +186,12 @@ export default function Work({
   // Swipe Forward: advance to next card (or expand to VideoWorks from card 6)
   const nextCard = useCallback(() => {
     if (currentPosRef.current >= EXPAND_END - 0.05) return;
-    const cur = Math.round(targetPos.current);
-    if (cur >= CAROUSEL_END) {
+    const cur = targetPos.current;
+    if (cur >= CAROUSEL_END - 0.1) {
+      // Automatically expand window card to fullscreen with increased speed
       goToCard(EXPAND_END);
     } else {
-      goToCard(cur + 1);
+      goToCard(Math.round(cur) + 1);
     }
   }, [goToCard]);
 
@@ -250,8 +256,11 @@ export default function Work({
     const dx = e.clientX - swipeStartX.current;
     const dy = e.clientY - swipeStartY.current;
 
-    // Movement threshold to trigger swipe (45px)
-    const SWIPE_THRESHOLD = 45;
+    const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+    const isAtWindowCard = targetPos.current >= CAROUSEL_END - 0.2;
+
+    // Movement threshold to trigger swipe (even more responsive on window card to expand immediately)
+    const SWIPE_THRESHOLD = isAtWindowCard ? 28 : isMobile ? 36 : 45;
     if (Math.abs(dx) >= SWIPE_THRESHOLD || Math.abs(dy) >= SWIPE_THRESHOLD) {
       hasSwiped.current = true;
       if (Math.abs(dx) >= Math.abs(dy)) {
@@ -276,7 +285,10 @@ export default function Work({
       const dy = e.clientY - swipeStartY.current;
       const dt = performance.now() - swipeStartTime.current;
 
-      if (dt < 280 && (Math.abs(dx) > 28 || Math.abs(dy) > 28)) {
+      const isAtWindowCard = targetPos.current >= CAROUSEL_END - 0.2;
+      const flickThreshold = isAtWindowCard ? 18 : 25;
+
+      if (dt < 300 && (Math.abs(dx) > flickThreshold || Math.abs(dy) > flickThreshold)) {
         hasSwiped.current = true;
         if (Math.abs(dx) >= Math.abs(dy)) {
           if (dx < 0) triggerSwipe("next");
