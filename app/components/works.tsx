@@ -241,9 +241,6 @@ export default function Work({
     swipeStartX.current = e.clientX;
     swipeStartY.current = e.clientY;
     swipeStartTime.current = performance.now();
-    try {
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    } catch {}
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -272,9 +269,6 @@ export default function Work({
   const onPointerUp = (e: React.PointerEvent) => {
     if (!isPointerDown.current) return;
     isPointerDown.current = false;
-    try {
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch {}
 
     // Check for quick flick gesture if movement threshold wasn't hit during move
     if (!hasSwiped.current && currentPosRef.current < EXPAND_END - 0.05) {
@@ -282,7 +276,7 @@ export default function Work({
       const dy = e.clientY - swipeStartY.current;
       const dt = performance.now() - swipeStartTime.current;
 
-      if (dt < 280 && (Math.abs(dx) > 20 || Math.abs(dy) > 20)) {
+      if (dt < 280 && (Math.abs(dx) > 28 || Math.abs(dy) > 28)) {
         hasSwiped.current = true;
         if (Math.abs(dx) >= Math.abs(dy)) {
           if (dx < 0) triggerSwipe("next");
@@ -309,9 +303,13 @@ export default function Work({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [triggerSwipe]);
 
-  // Wheel — discrete card-by-card snap
+  // Wheel — calibrated card-by-card snap with reduced sensitivity on PC
   useEffect(() => {
     if (!isActive) return;
+
+    let wheelAccumulator = 0;
+    let wheelCooldown = 0;
+    let resetTimer: NodeJS.Timeout | null = null;
 
     const onWheel = (e: WheelEvent) => {
       if (currentPosRef.current >= EXPAND_END - 0.05) return;
@@ -319,37 +317,55 @@ export default function Work({
       let dy = e.deltaY;
       let dx = e.deltaX;
       if (e.deltaMode === 1) {
-        dy *= 32;
-        dx *= 32;
+        dy *= 28;
+        dx *= 28;
       } else if (e.deltaMode === 2) {
         dy *= window.innerHeight;
         dx *= window.innerWidth;
       }
 
       const dominant = Math.abs(dx) > Math.abs(dy) ? dx : dy;
-      if (Math.abs(dominant) < 20) return;
+      if (Math.abs(dominant) < 8) return;
+
+      const now = performance.now();
 
       // On PC: Ignore the first scroll gesture upon entering Works
-      const now = performance.now();
       if (!hasIgnoredFirstScroll.current) {
         hasIgnoredFirstScroll.current = true;
         firstScrollEndTime.current = now;
         return;
       }
-      if (now - firstScrollEndTime.current < 450) {
+      if (now - firstScrollEndTime.current < 500) {
         firstScrollEndTime.current = now;
         return;
       }
 
-      if (dominant > 0) {
-        triggerSwipe("next");
-      } else {
-        triggerSwipe("prev");
+      // If in cooldown from previous card step, ignore trailing momentum
+      if (now < wheelCooldown) return;
+
+      // Accumulate scroll input to prevent unintended micro-scrolls
+      wheelAccumulator += dominant;
+
+      if (resetTimer) clearTimeout(resetTimer);
+      resetTimer = setTimeout(() => {
+        wheelAccumulator = 0;
+      }, 200);
+
+      // Substantially reduced sensitivity threshold (requires deliberate 60px gesture)
+      const WHEEL_THRESHOLD = 60;
+      if (Math.abs(wheelAccumulator) >= WHEEL_THRESHOLD) {
+        const isNext = wheelAccumulator > 0;
+        wheelAccumulator = 0;
+        wheelCooldown = now + 620; // Lock for 620ms so 1 scroll = exactly 1 card step
+        triggerSwipe(isNext ? "next" : "prev");
       }
     };
 
     window.addEventListener("wheel", onWheel, { passive: true });
-    return () => window.removeEventListener("wheel", onWheel);
+    return () => {
+      window.removeEventListener("wheel", onWheel);
+      if (resetTimer) clearTimeout(resetTimer);
+    };
   }, [isActive, triggerSwipe]);
 
   // Active project for caption
@@ -444,6 +460,7 @@ export default function Work({
                 key={project.id}
                 suppressHydrationWarning
                 onClick={(e) => {
+                  if (hasSwiped.current) return;
                   if (isVideoWorks && expandProgress >= 0.95) {
                     // In VideoWorks (fullscreen): do not interfere with internal player
                     return;
@@ -451,14 +468,13 @@ export default function Work({
                   if (isVideoWorks) {
                     // Tap on VideoWorks card expands straight to fullscreen
                     e.stopPropagation();
-                    targetPos.current = EXPAND_END;
-                    startPhysics();
+                    goToCard(EXPAND_END);
                     return;
                   }
                   if (absDiff > 0.25) {
                     e.stopPropagation();
-                    targetPos.current = idx;
-                    startPhysics();
+                    goToCard(idx);
+                    return;
                   } else {
                     window.open(project.liveUrl, "_blank");
                   }

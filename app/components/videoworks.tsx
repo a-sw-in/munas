@@ -150,13 +150,13 @@ export default function VideoWorks({
 
     const tick = () => {
       const diff = targetFooterProgress.current - footerProgressRef.current;
-      if (Math.abs(diff) < 0.0008) {
+      if (Math.abs(diff) < 0.001) {
         footerProgressRef.current = targetFooterProgress.current;
         setFooterProgress(targetFooterProgress.current);
         footerAnimFrame.current = null;
         return;
       }
-      footerProgressRef.current += diff * 0.14;
+      footerProgressRef.current += diff * 0.22;
       setFooterProgress(footerProgressRef.current);
       footerAnimFrame.current = requestAnimationFrame(tick);
     };
@@ -259,8 +259,9 @@ export default function VideoWorks({
     const start = wheelPosRef.current;
     const end = targetIndex;
     const startTime = performance.now();
-    // 700ms calibrated smooth cinematic wave transition
-    const duration = 500;
+    // Fast, snappy speed on mobile (260ms), smooth cinematic wave transition on desktop (500ms)
+    const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+    const duration = isMobile ? 260 : 500;
 
     setActiveIndex(targetIndex);
     setIsCardHovered(false);
@@ -326,16 +327,12 @@ export default function VideoWorks({
       // ── PHASE: FOOTER EXPANDED OR EXPANDING ──
       if (footerProgressRef.current > 0.001) {
         if (dy > 0) {
-          // Scroll down: expand footer window more toward 1.0
-          if (targetFooterProgress.current < 1) {
-            const step = Math.max(0.04, Math.min(0.25, Math.abs(dy) * 0.0015));
-            targetFooterProgress.current = Math.min(1, targetFooterProgress.current + step);
-            startFooterPhysics();
-          }
+          // Scroll down: expand footer window decisively to full
+          targetFooterProgress.current = 1;
+          startFooterPhysics();
         } else {
-          // Scroll up: shrink footer window back toward 0.0
-          const step = Math.max(0.04, Math.min(0.25, Math.abs(dy) * 0.0015));
-          targetFooterProgress.current = Math.max(0, targetFooterProgress.current - step);
+          // Scroll up: close footer window decisively back to 0
+          targetFooterProgress.current = 0;
           startFooterPhysics();
         }
         return;
@@ -353,9 +350,8 @@ export default function VideoWorks({
             scrollLockRef.current = false;
           }, 560);
         } else {
-          // Reached bottom of video works -> scroll down initiates Footer slit opening!
-          const step = Math.max(0.05, Math.min(0.25, Math.abs(dy) * 0.0015));
-          targetFooterProgress.current = Math.min(1, targetFooterProgress.current + step);
+          // Reached bottom of video works -> scroll down initiates swift Footer slit opening!
+          targetFooterProgress.current = 1;
           startFooterPhysics();
         }
       } else {
@@ -404,18 +400,18 @@ export default function VideoWorks({
     const handleTouchEnd = (e: TouchEvent) => {
       if (scrollLockRef.current) return;
       // Guard against touch gestures leaking immediately after expanding
-      if (Date.now() - expandedAtRef.current < 500) return;
+      if (Date.now() - expandedAtRef.current < 350) return;
 
       const dy = startY - e.changedTouches[0].clientY;
       const dx = startX - e.changedTouches[0].clientX;
 
       // Ignore micro taps or horizontal swipes
-      if (Math.abs(dy) < 30 || Math.abs(dy) < Math.abs(dx)) return;
+      if (Math.abs(dy) < 24 || Math.abs(dy) < Math.abs(dx)) return;
 
       if (dy > 0) {
         // Swipe UP -> next video OR footer opening at bottom
         if (footerProgressRef.current > 0.001) {
-          targetFooterProgress.current = Math.min(1, targetFooterProgress.current + 0.25);
+          targetFooterProgress.current = 1;
           startFooterPhysics();
           return;
         }
@@ -424,16 +420,16 @@ export default function VideoWorks({
           goToProject(activeIndexRef.current + 1);
           setTimeout(() => {
             scrollLockRef.current = false;
-          }, 450);
+          }, 270);
         } else {
-          // Bottom reached -> open footer window
-          targetFooterProgress.current = Math.min(1, targetFooterProgress.current + 0.25);
+          // Bottom reached -> open footer window swiftly
+          targetFooterProgress.current = 1;
           startFooterPhysics();
         }
       } else {
         // Swipe DOWN -> previous video OR footer closing OR return to carousel
         if (footerProgressRef.current > 0.001) {
-          targetFooterProgress.current = Math.max(0, targetFooterProgress.current - 0.25);
+          targetFooterProgress.current = 0;
           startFooterPhysics();
           return;
         }
@@ -442,15 +438,15 @@ export default function VideoWorks({
           goToProject(activeIndexRef.current - 1);
           setTimeout(() => {
             scrollLockRef.current = false;
-          }, 450);
+          }, 270);
         } else {
           // At project 0: deliberate downward swipe returns to carousel
-          if (dy < -45 && onReturn) {
+          if (dy < -40 && onReturn) {
             scrollLockRef.current = true;
             onReturn();
             setTimeout(() => {
               scrollLockRef.current = false;
-            }, 550);
+            }, 450);
           }
         }
       }
@@ -596,7 +592,8 @@ export default function VideoWorks({
 
             const scale = Math.max(0.72, Math.pow(Math.cos(angleRad), 0.65));
             const opacity = Math.max(0, Math.pow(Math.cos(angleRad), 2.2));
-            const blur = Math.max(0, Math.min(6, (Math.abs(offset) - 0.35) * 3.5));
+            const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+            const blur = isMobile ? 0 : Math.max(0, Math.min(6, (Math.abs(offset) - 0.35) * 3.5));
             const isActive = index === activeIndex;
             const zIndex = Math.round((1 - Math.abs(offset) / 3) * 50);
 
@@ -604,7 +601,13 @@ export default function VideoWorks({
               <div
                 key={project.id}
                 ref={isActive ? activeCardRef : undefined}
-                onClick={() => !isActive && goToProject(index)}
+                onClick={() => {
+                  if (!isActive) {
+                    goToProject(index);
+                  } else {
+                    openZoom();
+                  }
+                }}
                 onMouseEnter={() => {
                   if (isActive) setIsCardHovered(true);
                 }}
@@ -664,9 +667,9 @@ export default function VideoWorks({
                     <div
                       className="absolute top-3.5 left-4 right-4 flex items-center justify-between text-xs font-mono z-20"
                       style={{
-                        opacity: isCardHovered ? 1 : 0,
+                        opacity: isMobile ? 1 : (isCardHovered ? 1 : 0),
                         transition: "opacity 280ms ease-in-out",
-                        pointerEvents: isCardHovered ? "auto" : "none",
+                        pointerEvents: isMobile ? "auto" : (isCardHovered ? "auto" : "none"),
                       }}
                     >
 
@@ -692,7 +695,8 @@ export default function VideoWorks({
                             videoRef.current.pause();
                             setIsPlaying(false);
                           } else {
-                            videoRef.current.play();
+                            const p = videoRef.current.play();
+                            if (p !== undefined) p.catch(() => {});
                             setIsPlaying(true);
                           }
                         }
@@ -968,7 +972,8 @@ export default function VideoWorks({
                       zoomedVideoRef.current.pause();
                       setIsPlaying(false);
                     } else {
-                      zoomedVideoRef.current.play();
+                      const p = zoomedVideoRef.current.play();
+                      if (p !== undefined) p.catch(() => {});
                       setIsPlaying(true);
                     }
                   }
