@@ -607,7 +607,7 @@ export default function VideoWorks({
         {/* Swipes out to LEFT as footer expands                     */}
         {/* ========================================================= */}
         <section
-          className="relative w-full lg:w-1/2 h-[320px] sm:h-[400px] lg:h-[480px] flex items-center justify-center will-change-transform"
+          className="relative w-full lg:w-1/2 h-[280px] sm:h-[340px] lg:h-[480px] flex items-center justify-center will-change-transform"
           style={{
             perspective: "1200px",
             perspectiveOrigin: "50% 50%",
@@ -620,7 +620,15 @@ export default function VideoWorks({
         >
           {FEATURED_VIDEOS.map((project, index) => {
             const offset = index - wheelPos;
-            if (Math.abs(offset) > 2.2) return null;
+            const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
+            // On mobile: only remove the card below (offset > 0.4), keep the card above visible
+            if (isMobile) {
+              if (offset > 0.4 || offset < -2.2) return null;
+            } else {
+              // On PC: show full 3D cylinder wheel (cards above and below)
+              if (Math.abs(offset) > 2.2) return null;
+            }
 
             const angleDeg = offset * stepAngleDeg;
             const angleRad = (angleDeg * Math.PI) / 180;
@@ -639,7 +647,6 @@ export default function VideoWorks({
 
             const scale = Math.max(0.72, Math.pow(Math.cos(angleRad), 0.65));
             const opacity = Math.max(0, Math.pow(Math.cos(angleRad), 2.2));
-            const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
             const isActive = index === activeIndex;
             const zIndex = Math.round((1 - Math.abs(offset) / 3) * 50);
 
