@@ -116,8 +116,8 @@ export default function About({
 
         {/* Name */}
         <h1
-          className="wi wi-2 font-black text-white leading-none mb-5 ml-[2rem] tracking-tight"
-          style={{ fontSize: "clamp(3rem, 6.5vw, 5.5rem)" }}
+          className="wi wi-2 font-black text-white leading-none mb-5  tracking-tight"
+          style={{ fontSize: "clamp(3rem, 6vw, 5.5rem)" }}
         >
           Munas M K
         </h1>

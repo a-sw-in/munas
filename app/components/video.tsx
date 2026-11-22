@@ -34,22 +34,20 @@ export default function Video({
       style={{ background: "#050506" }}
     >
       {/* ════════════════════════════════════════
-          VIDEO COMPONENT: Fullscreen → Left Component
+          VIDEO COMPONENT: Fullscreen → Left (Desktop) / Top (Mobile)
       ════════════════════════════════════════ */}
       <div
-        className="z-10"
+        className={`z-10 absolute overflow-hidden transition-all duration-[950ms] ${
+          isSplit
+            ? "shadow-[0_25px_70px_rgba(0,0,0,0.85),0_0_0_1px_rgba(255,255,255,0.12)] " +
+              /* Mobile Split: Top Card */
+              "top-[3.5vh] left-[5%] w-[90%] h-[28vh] rounded-2xl " +
+              /* Desktop Split: Left Side (Exact Original) */
+              "md:top-[10vh] md:left-[clamp(2rem,5vw,6rem)] md:w-[44%] md:h-[80vh] md:rounded-none"
+            : "top-0 left-0 w-full h-full rounded-none shadow-none"
+        }`}
         style={{
-          position: "absolute",
-          top: isSplit ? "10vh" : "0",
-          left: isSplit ? "clamp(2rem, 5vw, 6rem)" : "0",
-          width: isSplit ? "44%" : "100%",
-          height: isSplit ? "80vh" : "100%",
-          borderRadius: "0px",
-          boxShadow: isSplit
-            ? "0 25px 70px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.12)"
-            : "none",
-          transition: "all 0.95s cubic-bezier(0.16, 1, 0.28, 1)",
-          overflow: "hidden",
+          transitionTimingFunction: "cubic-bezier(0.16, 1, 0.28, 1)",
         }}
       >
         <video
@@ -78,10 +76,11 @@ export default function Video({
       </div>
 
       {/* ════════════════════════════════════════
-          RIGHT CONTENT PANEL (Structured like About's left component)
+          1. DESKTOP RIGHT CONTENT PANEL (hidden md:flex)
+          100% EXACT ORIGINAL UNTOUCHED
       ════════════════════════════════════════ */}
       <div
-        className="relative z-20 flex flex-col justify-center min-h-screen "
+        className="hidden md:flex relative z-20 flex-col justify-center min-h-screen"
         style={{
           marginLeft: "auto",
           width: "46%",
@@ -105,9 +104,10 @@ export default function Video({
         </h1>
 
         {/* Cinematography & Video Production */}
-        <p className="text-white/55 text-[13px] leading-[1.5] max-w-[400px]"
-        style={{paddingTop:'1rem',paddingBottom:'0.5rem'}}>
-        
+        <p
+          className="text-white/55 text-[13px] leading-[1.5] max-w-[400px]"
+          style={{ paddingTop: '1rem', paddingBottom: '0.5rem' }}
+        >
           Menciptakan visual bergerak dengan kedalaman sinematik dan narasi visual
           yang kuat. Dari perencanaan konsep, sinematografi, hingga penyuntingan akhir,
           setiap frame dirancang untuk menyampaikan emosi dan pesan secara mendalam.
@@ -115,12 +115,12 @@ export default function Video({
 
         {/* 2-column: Pengalaman / Bidang Fokus */}
         <div
-          className="grid grid-cols-2 gap-x-6 gap-y-5 "
+          className="grid grid-cols-2 gap-x-6 gap-y-5"
           style={{ paddingTop: "clamp(0.5rem, 0.5vw, 1rem)", paddingBottom: '0rem' }}
         >
           {/* Col 1 */}
           <div>
-            <h3 className="text-white font-bold text-sm ">Fokus &amp; Peran :</h3>
+            <h3 className="text-white font-bold text-sm">Fokus &amp; Peran :</h3>
             <div className="text-white/55 text-[12px] leading-relaxed space-y-2">
               <div>
                 <p>Visual Framing &amp; Lighting</p>
@@ -131,7 +131,7 @@ export default function Video({
           {/* Col 2 */}
           <div className="flex flex-col gap-5">
             <div>
-              <h3 className="text-white font-bold text-sm ">Produksi :</h3>
+              <h3 className="text-white font-bold text-sm">Produksi :</h3>
               <div className="text-white/55 text-[12px] leading-relaxed space-y-2">
                 <div>
                   <p>Social Media Reels &amp; Ads</p>
@@ -143,6 +143,57 @@ export default function Video({
 
         {/* Button placed at bottom right of right card */}
         <div className="flex justify-end pt-8">
+          <Button />
+        </div>
+      </div>
+
+      {/* ════════════════════════════════════════
+          2. MOBILE CONTENT PANEL (block md:hidden)
+          Dedicated responsive phone layout
+      ════════════════════════════════════════ */}
+      <div
+        className="block md:hidden relative z-20 w-full h-full overflow-y-auto px-6 flex flex-col justify-center pt-[33vh] pb-8"
+        style={{
+          opacity: isSplit ? 1 : 0,
+          transform: isSplit ? "translateY(0)" : "translateY(35px)",
+          pointerEvents: isSplit ? "auto" : "none",
+          transition: "opacity 0.95s cubic-bezier(0.16, 1, 0.28, 1), transform 0.95s cubic-bezier(0.16, 1, 0.28, 1)",
+          transitionDelay: isSplit ? "0.15s" : "0s",
+        }}
+      >
+        {/* Name / Title */}
+        <h1 className="font-black text-red-700 leading-none mb-3 tracking-tight text-3xl sm:text-4xl">
+          ACID Record
+        </h1>
+
+        {/* Cinematography & Video Production */}
+        <p className="text-white/60 text-xs sm:text-[13px] leading-relaxed mb-4 max-w-sm pt-1">
+          Menciptakan visual bergerak dengan kedalaman sinematik dan narasi visual
+          yang kuat. Dari perencanaan konsep, sinematografi, hingga penyuntingan akhir,
+          setiap frame dirancang untuk menyampaikan emosi dan pesan secara mendalam.
+        </p>
+
+        {/* 2-column: Pengalaman / Bidang Fokus */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 mb-4 pt-1">
+          {/* Col 1 */}
+          <div>
+            <h3 className="text-white font-bold text-xs mb-1">Fokus &amp; Peran :</h3>
+            <div className="text-white/60 text-[11px] leading-snug space-y-1">
+              <p>Visual Framing &amp; Lighting</p>
+            </div>
+          </div>
+
+          {/* Col 2 */}
+          <div>
+            <h3 className="text-white font-bold text-xs mb-1">Produksi :</h3>
+            <div className="text-white/60 text-[11px] leading-snug space-y-1">
+              <p>Social Media Reels &amp; Ads</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Button placed at bottom right */}
+        <div className="flex justify-end pt-1 -mt-12">
           <Button />
         </div>
       </div>
