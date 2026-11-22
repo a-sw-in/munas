@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Button from "./insta";
 
 export default function Video({
@@ -12,29 +12,36 @@ export default function Video({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const mobileVideoRef = useRef<HTMLVideoElement>(null);
+  const [isMobileClient, setIsMobileClient] = useState<boolean | null>(null);
+
+  // Detect screen size on client mount and initialize iOS-compliant video buffering
+  useEffect(() => {
+    const isMobile = window.innerWidth < 768;
+    setIsMobileClient(isMobile);
+
+    const activeEl = isMobile ? mobileVideoRef.current : videoRef.current;
+    if (activeEl) {
+      activeEl.defaultMuted = true;
+      activeEl.muted = true;
+      activeEl.load();
+    }
+  }, []);
 
   useEffect(() => {
-    // Desktop video
-    const video = videoRef.current;
-    if (video) {
+    if (isMobileClient === null) return;
+    const activeEl = isMobileClient ? mobileVideoRef.current : videoRef.current;
+
+    if (activeEl) {
+      activeEl.defaultMuted = true;
+      activeEl.muted = true;
       if (isPlaying) {
-        const p = video.play();
+        const p = activeEl.play();
         if (p !== undefined) p.catch(() => {});
       } else {
-        video.pause();
+        activeEl.pause();
       }
     }
-    // Mobile video — always keep in sync
-    const mVideo = mobileVideoRef.current;
-    if (mVideo) {
-      if (isPlaying) {
-        const p = mVideo.play();
-        if (p !== undefined) p.catch(() => {});
-      } else {
-        mVideo.pause();
-      }
-    }
-  }, [isPlaying]);
+  }, [isPlaying, isMobileClient]);
 
   return (
     <section
@@ -64,7 +71,6 @@ export default function Video({
       >
         <video
           ref={videoRef}
-          src="/assets/video.mp4"
           loop
           muted
           playsInline
@@ -75,7 +81,11 @@ export default function Video({
             objectFit: "cover",
             objectPosition: "center",
           }}
-        />
+        >
+          {isMobileClient !== true && (
+            <source src="/assets/video.mp4" type="video/mp4" />
+          )}
+        </video>
         {/* Subtle dark vignette overlay when split */}
         <div
           className="absolute inset-0 pointer-events-none transition-opacity duration-700"
@@ -183,13 +193,16 @@ export default function Video({
         >
           <video
             ref={mobileVideoRef}
-            src="/assets/video.mp4"
             loop
             muted
             playsInline
             preload="auto"
             className="w-full h-full object-cover object-center"
-          />
+          >
+            {isMobileClient !== false && (
+              <source src="/assets/video.mp4" type="video/mp4" />
+            )}
+          </video>
           {/* Vignette — fades in when split, same as desktop */}
           <div
             className="absolute inset-0 pointer-events-none"

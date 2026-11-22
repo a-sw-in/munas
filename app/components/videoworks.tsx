@@ -330,8 +330,9 @@ export default function VideoWorks({
 
       const now = performance.now();
 
-      // Guard against wheel momentum immediately after expanding into VideoWorks
-      if (Date.now() - expandedAtRef.current < 550) return;
+      // Guard against wheel momentum until expansion animation is 100% complete and settled
+      if (!isExpanded || scrollLockRef.current) return;
+      if (Date.now() - expandedAtRef.current < 450) return;
 
       // If already in cooldown from a video switch or footer transition, ignore momentum
       if (now < wheelCooldown || scrollLockRef.current) return;
@@ -412,8 +413,10 @@ export default function VideoWorks({
       scrollLockRef.current = true;
       const t = setTimeout(() => {
         scrollLockRef.current = false;
-      }, 550);
+      }, 450);
       return () => clearTimeout(t);
+    } else {
+      scrollLockRef.current = true;
     }
   }, [isExpanded]);
 
@@ -424,17 +427,21 @@ export default function VideoWorks({
     let startX = 0;
 
     const handleTouchStart = (e: TouchEvent) => {
+      if (!isExpanded || scrollLockRef.current) return;
       startY = e.touches[0].clientY;
       startX = e.touches[0].clientX;
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
-      if (scrollLockRef.current) return;
-      // Guard against touch gestures leaking immediately after expanding
-      if (Date.now() - expandedAtRef.current < 350) return;
+      if (!isExpanded || scrollLockRef.current || startY === 0) return;
+      // Strictly prevent touch until expansion animation is 100% complete and settled
+      if (Date.now() - expandedAtRef.current < 450) return;
 
       const dy = startY - e.changedTouches[0].clientY;
       const dx = startX - e.changedTouches[0].clientX;
+
+      startY = 0;
+      startX = 0;
 
       // Ignore micro taps or horizontal swipes
       if (Math.abs(dy) < 24 || Math.abs(dy) < Math.abs(dx)) return;
@@ -560,6 +567,15 @@ export default function VideoWorks({
         <div className="absolute inset-0 bg-gradient-to-b from-[#050506]/90 via-transparent to-[#050506]/90 pointer-events-none" />
       </div>
 
+      {/* ── Bottom to Top Fade Gradient ── */}
+      <div
+        className="absolute bottom-0 left-0 right-0 h-[40vh] sm:h-[32vh] pointer-events-none z-10"
+        style={{
+          background:
+            "linear-gradient(to top, #050506 0%, #050506 28%, rgba(5,5,6,0.85) 60%, rgba(5,5,6,0.35) 85%, transparent 100%)",
+        }}
+      />
+
       {/* ── Top-Right Circle Mute / Unmute Button (Visible in Minimized View) ── */}
       <div
         className="fixed top-5 right-5 sm:top-7 sm:right-8 z-30 transition-all duration-300 pointer-events-auto"
@@ -584,7 +600,7 @@ export default function VideoWorks({
       </div>
 
       {/* ── Main Dual Wheel Stage: Left Video Wheel & Right Pure Typography ── */}
-      <main className="relative z-20 flex-1 w-[100vw] items-center max-w-5xl xl:max-w-6xl mx-auto flex flex-col lg:flex-row justify-center px-6 sm:px-10 py-2 gap-8 lg:gap-14 overflow-hidden"
+      <main className="relative z-20 flex-1 w-[100vw] items-center max-w-5xl xl:max-w-6xl mx-auto flex flex-col lg:flex-row justify-center px-6 sm:px-10 py-2 gap-4 sm:gap-6 lg:gap-14 overflow-hidden"
       >
         {/* ========================================================= */}
         {/* LEFT SIDE: 3D SLOW WAVE VIDEO MOVEMENT (CENTERED)         */}
@@ -634,7 +650,7 @@ export default function VideoWorks({
                 onClick={() => {
                   if (!isActive) {
                     goToProject(index);
-                  } else {
+                  } else if (typeof window !== "undefined" && window.innerWidth >= 768) {
                     openZoom();
                   }
                 }}
@@ -676,8 +692,8 @@ export default function VideoWorks({
                   <div className="absolute inset-0">
                     <video
                       ref={videoRef}
-                      src="/assets/video.mp4"
-                      autoPlay
+                      src={isExpanded ? "/assets/video.mp4" : undefined}
+                      autoPlay={isExpanded}
                       loop
                       muted={isZoomed ? true : isMuted}
                       playsInline
@@ -693,23 +709,23 @@ export default function VideoWorks({
                       }}
                     />
 
-                    {/* Cinematic top overlay with Zoom Button (visible on hover) */}
+                    {/* Cinematic top overlay with Zoom Button (Desktop only) */}
                     <div
-                      className="absolute top-3.5 left-4 right-4 flex items-center justify-between text-xs font-mono z-20"
+                      className="absolute top-3.5 left-4 right-4 hidden md:flex items-center justify-between text-xs font-mono z-20"
                       style={{
-                        opacity: isMobile ? 1 : (isCardHovered ? 1 : 0),
+                        opacity: isCardHovered ? 1 : 0,
                         transition: "opacity 280ms ease-in-out",
-                        pointerEvents: isMobile ? "auto" : (isCardHovered ? "auto" : "none"),
+                        pointerEvents: isCardHovered ? "auto" : "none",
                       }}
                     >
 
-                      {/* Zoom Out / Pop Out Button */}
+                      {/* Zoom Out / Pop Out Button — Hidden on mobile phones */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           openZoom();
                         }}
-                        className="inline-flex items-center m-5 gap-1.5 px-2.5 py-1.5 rounded-full bg-black/80 hover:bg-red-600 text-white/90 hover:text-white backdrop-blur-md border border-white/20 hover:border-red-500 transition-all cursor-pointer shadow-lg hover:scale-105 pointer-events-auto"
+                        className="hidden md:inline-flex items-center m-5 gap-1.5 px-2.5 py-1.5 rounded-full bg-black/80 hover:bg-red-600 text-white/90 hover:text-white backdrop-blur-md border border-white/20 hover:border-red-500 transition-all cursor-pointer shadow-lg hover:scale-105 pointer-events-auto"
                         title="Zoom out / pop out video to center"
                       >
                         <Maximize2 className="w-4.5 h-3.5 text-red-400 group-hover:text-white" />
@@ -778,12 +794,11 @@ export default function VideoWorks({
         {/* Swipes out to RIGHT as footer expands                     */}
         {/* ========================================================= */}
         <section
-          className="relative w-full lg:w-1/2 h-[320px] sm:h-[400px] lg:h-[480px] flex items-center justify-center will-change-transform"
+          className="relative w-full lg:w-1/2 h-[220px] sm:h-[320px] lg:h-[480px] flex items-center justify-center will-change-transform lg:ml-12 -mt-6 sm:-mt-2 lg:mt-0"
           style={{
             perspective: "1200px",
             perspectiveOrigin: "50% 50%",
             transformStyle: "preserve-3d",
-            marginLeft: "3rem",
             transform: footerProgress > 0 ? `translateX(${footerProgress * 115}%)` : undefined,
             opacity: footerProgress > 0 ? Math.max(0, 1 - footerProgress * 1.3) : undefined,
           }}
@@ -801,6 +816,7 @@ export default function VideoWorks({
             const opacity = Math.pow(Math.max(0, 1 - Math.abs(offset) * 1.35), 1.5);
             const scale = Math.max(0.92, 1 - Math.abs(offset) * 0.08);
             const isActive = index === activeIndex;
+            const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
             return (
               <div
@@ -809,7 +825,7 @@ export default function VideoWorks({
                   isActive ? "cursor-default pointer-events-auto" : "pointer-events-none"
                 }`}
                 style={{
-                  top: "50%",
+                  top: isMobile ? "38%" : "50%",
                   left: "50%",
                   transform: `translate(-50%, -50%) translate3d(0, ${textWaveY}px, 0) rotateX(${textTiltX}deg) scale(${scale})`,
                   opacity,
@@ -954,8 +970,8 @@ export default function VideoWorks({
               {/* Synchronized Zoomed Video Player */}
               <video
                 ref={zoomedVideoRef}
-                src="/assets/video.mp4"
-                autoPlay
+                src={isZoomed ? "/assets/video.mp4" : undefined}
+                autoPlay={isZoomed}
                 loop
                 muted={isMuted}
                 playsInline

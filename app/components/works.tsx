@@ -108,14 +108,12 @@ export default function Work({
   const hasSwiped = useRef(false);
   const lastActionTime = useRef(0);
 
-  // Ignore first scroll on PC after entering Works
-  const hasIgnoredFirstScroll = useRef(false);
-  const firstScrollEndTime = useRef(0);
+  // Entrance cooldown on PC after entering Works to avoid momentum bleed
+  const enteredAt = useRef(0);
 
   useEffect(() => {
     if (isActive) {
-      hasIgnoredFirstScroll.current = false;
-      firstScrollEndTime.current = 0;
+      enteredAt.current = performance.now();
     }
   }, [isActive]);
 
@@ -241,7 +239,7 @@ export default function Work({
   }, [currentPos, onExitProgress]);
 
   // Pointer swipe handlers:
-  // Discrete swipe recognition - NO continuous touch sync during dragging!
+  // Discrete swipe recognition - immediate response on PC mouse drag and mobile touch
   const onPointerDown = (e: React.PointerEvent) => {
     if (currentPosRef.current >= EXPAND_END - 0.05) return;
     isPointerDown.current = true;
@@ -249,6 +247,9 @@ export default function Work({
     swipeStartX.current = e.clientX;
     swipeStartY.current = e.clientY;
     swipeStartTime.current = performance.now();
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {}
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -258,11 +259,10 @@ export default function Work({
     const dx = e.clientX - swipeStartX.current;
     const dy = e.clientY - swipeStartY.current;
 
-    const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
     const isAtWindowCard = targetPos.current >= CAROUSEL_END - 0.2;
 
-    // Movement threshold to trigger swipe (even more responsive on window card to expand immediately)
-    const SWIPE_THRESHOLD = isAtWindowCard ? 28 : isMobile ? 36 : 45;
+    // Movement threshold to trigger swipe (quick 22px movement on PC mouse drag or touch)
+    const SWIPE_THRESHOLD = isAtWindowCard ? 18 : 22;
     if (Math.abs(dx) >= SWIPE_THRESHOLD || Math.abs(dy) >= SWIPE_THRESHOLD) {
       hasSwiped.current = true;
       if (Math.abs(dx) >= Math.abs(dy)) {
@@ -270,7 +270,7 @@ export default function Work({
         if (dx < 0) triggerSwipe("next");
         else triggerSwipe("prev");
       } else {
-        // Vertical swipe: swipe up advances to next card, swipe down goes to prev
+        // Vertical swipe: swipe up (dy < 0) advances to next card, swipe down (dy > 0) goes to prev
         if (dy < 0) triggerSwipe("next");
         else triggerSwipe("prev");
       }
@@ -280,6 +280,9 @@ export default function Work({
   const onPointerUp = (e: React.PointerEvent) => {
     if (!isPointerDown.current) return;
     isPointerDown.current = false;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {}
 
     // Check for quick flick gesture if movement threshold wasn't hit during move
     if (!hasSwiped.current && currentPosRef.current < EXPAND_END - 0.05) {
@@ -288,9 +291,9 @@ export default function Work({
       const dt = performance.now() - swipeStartTime.current;
 
       const isAtWindowCard = targetPos.current >= CAROUSEL_END - 0.2;
-      const flickThreshold = isAtWindowCard ? 18 : 25;
+      const flickThreshold = isAtWindowCard ? 14 : 18;
 
-      if (dt < 300 && (Math.abs(dx) > flickThreshold || Math.abs(dy) > flickThreshold)) {
+      if (dt < 320 && (Math.abs(dx) > flickThreshold || Math.abs(dy) > flickThreshold)) {
         hasSwiped.current = true;
         if (Math.abs(dx) >= Math.abs(dy)) {
           if (dx < 0) triggerSwipe("next");
@@ -317,7 +320,7 @@ export default function Work({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [triggerSwipe]);
 
-  // Wheel — calibrated card-by-card snap with reduced sensitivity on PC
+  // Wheel — calibrated card-by-card snap with immediate responsiveness on PC trackpad / mouse
   useEffect(() => {
     if (!isActive) return;
 
@@ -327,6 +330,11 @@ export default function Work({
 
     const onWheel = (e: WheelEvent) => {
       if (currentPosRef.current >= EXPAND_END - 0.05) return;
+
+      const now = performance.now();
+
+      // Guard against wheel momentum bleed from previous section for only 240ms after entering
+      if (now - enteredAt.current < 240) return;
 
       let dy = e.deltaY;
       let dx = e.deltaX;
@@ -339,20 +347,7 @@ export default function Work({
       }
 
       const dominant = Math.abs(dx) > Math.abs(dy) ? dx : dy;
-      if (Math.abs(dominant) < 8) return;
-
-      const now = performance.now();
-
-      // On PC: Ignore the first scroll gesture upon entering Works
-      if (!hasIgnoredFirstScroll.current) {
-        hasIgnoredFirstScroll.current = true;
-        firstScrollEndTime.current = now;
-        return;
-      }
-      if (now - firstScrollEndTime.current < 500) {
-        firstScrollEndTime.current = now;
-        return;
-      }
+      if (Math.abs(dominant) < 6) return;
 
       // If in cooldown from previous card step, ignore trailing momentum
       if (now < wheelCooldown) return;
@@ -363,14 +358,14 @@ export default function Work({
       if (resetTimer) clearTimeout(resetTimer);
       resetTimer = setTimeout(() => {
         wheelAccumulator = 0;
-      }, 200);
+      }, 180);
 
-      // Substantially reduced sensitivity threshold (requires deliberate 60px gesture)
-      const WHEEL_THRESHOLD = 60;
+      // Responsive threshold (30px) for quick swipe up / scroll
+      const WHEEL_THRESHOLD = 30;
       if (Math.abs(wheelAccumulator) >= WHEEL_THRESHOLD) {
         const isNext = wheelAccumulator > 0;
         wheelAccumulator = 0;
-        wheelCooldown = now + 620; // Lock for 620ms so 1 scroll = exactly 1 card step
+        wheelCooldown = now + 420; // Snappy 420ms cooldown
         triggerSwipe(isNext ? "next" : "prev");
       }
     };
@@ -402,7 +397,7 @@ export default function Work({
   // Fading of other carousel elements as VideoWorks window expands
   const otherCardsFade = Math.max(0, 1 - expandProgress * 2.5);
   const captionFade = Math.max(0, 1 - expandProgress * 3.0);
-  const glowFade = 0.8 * Math.max(0, 1 - expandProgress * 2.0);
+  const glowFade = 0.85 * Math.max(0, 1 - expandProgress);
 
   return (
     <section
@@ -418,7 +413,19 @@ export default function Work({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onDragStart={(e) => e.preventDefault()}
     >
+      {/* ── Center Light Red Circle Glow (Direct child of section: perfectly spherical, zero top crop or clipping) ── */}
+      <div
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none w-[340px] h-[340px] sm:w-[500px] sm:h-[500px] rounded-full blur-[75px] sm:blur-[100px] z-0"
+        style={{
+          background:
+            "radial-gradient(circle at center, rgba(239, 68, 68, 0.48) 0%, rgba(220, 38, 38, 0.2) 32%, transparent 65%)",
+          opacity: glowFade,
+          transform: "translate(-50%, calc(-50% - 30px))",
+        }}
+      />
+
       {/* ══════════════════════════════════════════════════════════════
           3D CYLINDRICAL CAROUSEL STAGE
       ══════════════════════════════════════════════════════════════ */}
@@ -428,15 +435,6 @@ export default function Work({
           willChange: "transform, opacity",
         }}
       >
-        {/* ── Center Light Red Circle Glow (BEHIND 3D cards stage) ── */}
-        <div
-          className="absolute top-[130px] sm:top-[170px] lg:top-[190px] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none w-[320px] h-[320px] sm:w-[460px] sm:h-[460px] rounded-full blur-[70px] sm:blur-[90px] z-0"
-          style={{
-            background:
-              "radial-gradient(circle, rgba(239, 68, 68, 0.45) 0%, rgba(220, 38, 38, 0.2) 45%, transparent 70%)",
-            opacity: glowFade,
-          }}
-        />
 
         {/* ── 3D Cylinder Stage ── */}
         <div
@@ -475,7 +473,7 @@ export default function Work({
                 suppressHydrationWarning
                 onClick={(e) => {
                   if (hasSwiped.current) return;
-                  if (isVideoWorks && expandProgress >= 0.95) {
+                  if (isVideoWorks && expandProgress >= 0.99) {
                     // In VideoWorks (fullscreen): do not interfere with internal player
                     return;
                   }
@@ -510,7 +508,7 @@ export default function Work({
                         borderRadius: `${16 * (1 - expandProgress)}px`,
                         zIndex: 100,
                         opacity: 1,
-                        pointerEvents: expandProgress >= 0.85 ? "auto" : "none",
+                        pointerEvents: expandProgress >= 0.99 ? "auto" : "none",
                         boxShadow:
                           expandProgress < 0.96
                             ? `0 30px 90px -15px rgba(0,0,0,${0.95 * (1 - expandProgress)})`
@@ -557,14 +555,13 @@ export default function Work({
                     <div
                       className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100vw] h-[100vh] overflow-hidden"
                       style={{
-                        pointerEvents: expandProgress >= 0.85 ? "auto" : "none",
+                        pointerEvents: expandProgress >= 0.99 ? "auto" : "none",
                       }}
                     >
                       <VideoWorks
-                        isExpanded={expandProgress >= 0.95}
+                        isExpanded={expandProgress >= 0.99}
                         onReturn={() => {
-                          targetPos.current = CAROUSEL_END;
-                          startPhysics();
+                          goToCard(CAROUSEL_END);
                         }}
                       />
                     </div>

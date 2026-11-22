@@ -160,15 +160,8 @@ export default function Home() {
     setTimeout(() => { setSection(0); }, FADE_MS);
   }, []);
 
-  /* ── Pre-warm Assets (Video & Project Images) ── */
+  /* ── Pre-warm Assets (Project Images) ── */
   useEffect(() => {
-    try {
-      const v = document.createElement("video");
-      v.src = "/assets/video.mp4";
-      v.preload = "auto";
-      v.load();
-    } catch {}
-
     const projectImages = [
       "/projects/Screenshot 2026-11-14 at 4.21.40 PM.png",
       "/projects/Cafe Website.png",
