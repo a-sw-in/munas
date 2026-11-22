@@ -377,6 +377,19 @@ export default function VideoWorks({
     return () => window.removeEventListener("wheel", handleWheel);
   }, [isExpanded, isZoomed, goToProject, onReturn, startFooterPhysics]);
 
+  // Expanded timestamp to prevent entry gestures from leaking into onReturn
+  const expandedAtRef = useRef(0);
+  useEffect(() => {
+    if (isExpanded) {
+      expandedAtRef.current = Date.now();
+      scrollLockRef.current = true;
+      const t = setTimeout(() => {
+        scrollLockRef.current = false;
+      }, 550);
+      return () => clearTimeout(t);
+    }
+  }, [isExpanded]);
+
   // Touch gesture swipe: 1 swipe = 1 wave video transition OR footer transition at bottom
   useEffect(() => {
     if (!isExpanded || isZoomed) return;
@@ -388,9 +401,13 @@ export default function VideoWorks({
 
     const handleTouchMove = (e: TouchEvent) => {
       if (scrollLockRef.current) return;
+      // Guard against touch gestures leaking immediately after expanding
+      if (Date.now() - expandedAtRef.current < 550) return;
+
       const dy = startY - e.touches[0].clientY;
 
-      if (Math.abs(dy) < 16) return;
+      if (Math.abs(dy) < 26) return;
+      startY = e.touches[0].clientY;
 
       if (dy > 0) {
         // Swipe UP -> next video OR footer opening at bottom
@@ -404,7 +421,7 @@ export default function VideoWorks({
           goToProject(activeIndexRef.current + 1);
           setTimeout(() => {
             scrollLockRef.current = false;
-          }, 560);
+          }, 480);
         } else {
           // Bottom reached -> open footer window
           targetFooterProgress.current = Math.min(1, targetFooterProgress.current + 0.2);
@@ -422,9 +439,15 @@ export default function VideoWorks({
           goToProject(activeIndexRef.current - 1);
           setTimeout(() => {
             scrollLockRef.current = false;
-          }, 560);
+          }, 480);
         } else {
-          if (onReturn) onReturn();
+          if (onReturn) {
+            scrollLockRef.current = true;
+            onReturn();
+            setTimeout(() => {
+              scrollLockRef.current = false;
+            }, 550);
+          }
         }
       }
     };

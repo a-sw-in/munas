@@ -104,8 +104,10 @@ export default function Work({
   // Drag tracking
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
+  const dragStartY = useRef(0);
   const dragStartPos = useRef(0);
   const lastX = useRef(0);
+  const lastY = useRef(0);
   const velocity = useRef(0);
   const hasTriggeredPrev = useRef(false);
 
@@ -139,6 +141,9 @@ export default function Work({
     return () => window.removeEventListener("resize", updateDimensions);
   }, []);
 
+  // Dynamic smooth spring physics: 0.082 on laptop wheel/mouse (silky, weighted), 0.11 on mobile touch
+  const isTouchRef = useRef(false);
+
   // Velvety smooth spring physics animation loop
   const startPhysics = useCallback(() => {
     if (animFrame.current) return;
@@ -151,7 +156,8 @@ export default function Work({
         animFrame.current = null;
         return;
       }
-      currentPosRef.current += diff * 0.078;
+      const ease = isTouchRef.current ? 0.11 : 0.082;
+      currentPosRef.current += diff * ease;
       setCurrentPos(currentPosRef.current);
       animFrame.current = requestAnimationFrame(tick);
     };
@@ -174,15 +180,20 @@ export default function Work({
     if (onExitProgress) onExitProgress(expandProgress);
   }, [currentPos, onEntranceProgress, onExitProgress]);
 
-  // Pointer drag handlers
+  // Pointer drag handlers (support touch and mouse seamlessly)
   const onPointerDown = (e: React.PointerEvent) => {
     if (currentPosRef.current >= EXPAND_END - 0.05) return;
+    isTouchRef.current = e.pointerType === "touch";
     isDragging.current = true;
     dragStartX.current = e.clientX;
+    dragStartY.current = e.clientY;
     lastX.current = e.clientX;
+    lastY.current = e.clientY;
     dragStartPos.current = targetPos.current;
     velocity.current = 0;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {}
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -190,7 +201,26 @@ export default function Work({
     const deltaX = e.clientX - dragStartX.current;
     velocity.current = lastX.current - e.clientX;
     lastX.current = e.clientX;
-    targetPos.current = dragStartPos.current - deltaX / cardSpacing;
+
+    let step: number;
+    if (e.pointerType === "mouse") {
+      // Laptop mouse drag: pure horizontal movement
+      step = -deltaX / cardSpacing;
+    } else {
+      // Touch drag on phone: responsive swipe
+      const deltaY = e.clientY - dragStartY.current;
+      lastY.current = e.clientY;
+      const dominant = Math.abs(deltaX) >= Math.abs(deltaY) ? -deltaX : -deltaY * 1.25;
+      step = dominant / cardSpacing;
+    }
+
+    let nextPos = dragStartPos.current + step;
+    // Expanding into VideoWorks from Card 6
+    if (dragStartPos.current >= CAROUSEL_END - 0.25 && step > 0.18) {
+      nextPos = Math.min(REAL_MAX, CAROUSEL_END + step * 1.3);
+    }
+
+    targetPos.current = Math.max(0, Math.min(REAL_MAX, nextPos));
     startPhysics();
   };
 
@@ -200,10 +230,20 @@ export default function Work({
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {}
-    const momentum = velocity.current / (cardSpacing * 0.7);
+    const momentumDivisor = e.pointerType === "mouse" ? cardSpacing * 0.85 : cardSpacing * 0.7;
+    const momentum = velocity.current / momentumDivisor;
+    let nextTarget = targetPos.current + momentum;
+
+    // When swiping forward on or near Card 6, cleanly expand to fullscreen VideoWorks
+    if (dragStartPos.current >= CAROUSEL_END - 0.3 && nextTarget > CAROUSEL_END + 0.3) {
+      nextTarget = EXPAND_END;
+    } else if (nextTarget > CAROUSEL_END && nextTarget < CAROUSEL_END + 0.3) {
+      nextTarget = CAROUSEL_END;
+    }
+
     targetPos.current = Math.max(
       0,
-      Math.min(REAL_MAX, targetPos.current + momentum)
+      Math.min(REAL_MAX, nextTarget)
     );
     startPhysics();
   };
@@ -229,6 +269,7 @@ export default function Work({
     if (!isActive) return;
 
     const onWheel = (e: WheelEvent) => {
+      isTouchRef.current = false;
       // If VideoWorks is expanded into fullscreen, VideoWorks controls its own wheel
       if (currentPosRef.current >= EXPAND_END - 0.05) return;
 
@@ -259,33 +300,47 @@ export default function Work({
     return () => window.removeEventListener("wheel", onWheel);
   }, [isActive, onPrevSection, startPhysics]);
 
-  // Touch swipe — continuous proportional movement
+  // Touch swipe fallback — continuous responsive proportional movement
   useEffect(() => {
     if (!isActive) return;
     let lastY = 0;
+    let lastX = 0;
 
     const onTouchStart = (e: TouchEvent) => {
+      isTouchRef.current = true;
       lastY = e.touches[0].clientY;
+      lastX = e.touches[0].clientX;
     };
 
     const onTouchMove = (e: TouchEvent) => {
       if (currentPosRef.current >= EXPAND_END - 0.05) return;
+      if (isDragging.current) return;
 
       const dy = lastY - e.touches[0].clientY;
+      const dx = lastX - e.touches[0].clientX;
       lastY = e.touches[0].clientY;
-      const delta = Math.max(-0.22, Math.min(0.22, dy * 0.0022));
+      lastX = e.touches[0].clientX;
 
-      if (dy > 0) {
+      // Dominant swipe direction (horizontal swipe left/right or vertical swipe up/down)
+      const effectiveDelta = Math.abs(dx) >= Math.abs(dy) ? dx : dy;
+      const delta = Math.max(-0.4, Math.min(0.4, (effectiveDelta / cardSpacing) * 1.3));
+
+      if (effectiveDelta > 0) {
         hasTriggeredPrev.current = false;
         if (targetPos.current < REAL_MAX) {
-          targetPos.current = Math.min(REAL_MAX, targetPos.current + delta);
+          // When at or near Card 6 (Video Works), swiping forward cleanly triggers expansion
+          if (targetPos.current >= CAROUSEL_END - 0.25) {
+            targetPos.current = EXPAND_END;
+          } else {
+            targetPos.current = Math.min(REAL_MAX, targetPos.current + delta);
+          }
           startPhysics();
         }
       } else {
         if (targetPos.current > 0) {
           targetPos.current = Math.max(0, targetPos.current + delta);
           startPhysics();
-        } else if (currentPosRef.current < 0.05 && !hasTriggeredPrev.current) {
+        } else if (currentPosRef.current < 0.1 && !hasTriggeredPrev.current) {
           hasTriggeredPrev.current = true;
           if (onPrevSection) onPrevSection();
         }
@@ -298,7 +353,7 @@ export default function Work({
       window.removeEventListener("touchstart", onTouchStart);
       window.removeEventListener("touchmove", onTouchMove);
     };
-  }, [isActive, onPrevSection, startPhysics]);
+  }, [isActive, cardSpacing, onPrevSection, startPhysics]);
 
   // Active project for caption
   const clampedPos = Math.max(0, Math.min(TOTAL - 1, currentPos));
@@ -338,6 +393,7 @@ export default function Work({
         backgroundColor: "transparent",
         color: "#ffffff",
         cursor: expandProgress >= 0.95 ? "default" : "grab",
+        touchAction: "none",
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -401,20 +457,22 @@ export default function Work({
                 key={project.id}
                 suppressHydrationWarning
                 onClick={(e) => {
-                  if (isVideoWorks && expandProgress > 0.05) {
-                    // In VideoWorks (expanding or fullscreen): do NOT minimize on click!
+                  if (isVideoWorks && expandProgress >= 0.95) {
+                    // In VideoWorks (fullscreen): do not interfere with internal player
+                    return;
+                  }
+                  if (isVideoWorks) {
+                    // Tap on VideoWorks card expands straight to fullscreen
                     e.stopPropagation();
+                    targetPos.current = EXPAND_END;
+                    startPhysics();
                     return;
                   }
                   if (absDiff > 0.25) {
                     e.stopPropagation();
                     targetPos.current = idx;
                     startPhysics();
-                  } else if (isVideoWorks && expandProgress < 0.9) {
-                    e.stopPropagation();
-                    targetPos.current = EXPAND_END;
-                    startPhysics();
-                  } else if (!isVideoWorks) {
+                  } else {
                     window.open(project.liveUrl, "_blank");
                   }
                 }}
