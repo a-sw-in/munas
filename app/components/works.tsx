@@ -164,9 +164,11 @@ export default function Work({
       const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
       const baseEase = isMobile ? 0.18 : 0.15;
 
-      // When expanding into fullscreen VideoWorks, increase speed by 20%
-      const isExpanding = targetPos.current >= EXPAND_END - 0.05;
-      const ease = isExpanding ? baseEase * 1.20 : baseEase;
+      // When expanding into fullscreen VideoWorks (or returning), increase speed by 30%
+      const isWindowTransition =
+        targetPos.current >= EXPAND_END - 0.05 ||
+        (currentPosRef.current >= CAROUSEL_END - 0.1 && targetPos.current <= CAROUSEL_END + 0.1);
+      const ease = isWindowTransition ? baseEase * 1.30 : baseEase;
 
       currentPosRef.current += diff * ease;
       setCurrentPos(currentPosRef.current);
