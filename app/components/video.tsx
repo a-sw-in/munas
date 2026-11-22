@@ -11,20 +11,28 @@ export default function Video({
   isSplit?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const mobileVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
+    // Desktop video
     const video = videoRef.current;
-    if (!video) return;
-
-    if (isPlaying) {
-      const playPromise = video.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(() => {
-          // Play prevented by browser
-        });
+    if (video) {
+      if (isPlaying) {
+        const p = video.play();
+        if (p !== undefined) p.catch(() => {});
+      } else {
+        video.pause();
       }
-    } else {
-      video.pause();
+    }
+    // Mobile video — always keep in sync
+    const mVideo = mobileVideoRef.current;
+    if (mVideo) {
+      if (isPlaying) {
+        const p = mVideo.play();
+        if (p !== undefined) p.catch(() => {});
+      } else {
+        mVideo.pause();
+      }
     }
   }, [isPlaying]);
 
@@ -33,11 +41,13 @@ export default function Video({
       className="fixed inset-0 w-full h-full overflow-hidden"
       style={{ background: "#050506" }}
     >
-      {/* ════════════════════════════════════════
-          VIDEO COMPONENT: Fullscreen → Left Component
-      ════════════════════════════════════════ */}
+      {/* ════════════════════════════════════════════════════════
+          LAPTOP / PC VIEW  — hidden on mobile, 100% UNTOUCHED
+      ════════════════════════════════════════════════════════ */}
+
+      {/* Video card — left side */}
       <div
-        className="z-10"
+        className="hidden md:block z-10"
         style={{
           position: "absolute",
           top: isSplit ? "10vh" : "0",
@@ -66,7 +76,6 @@ export default function Video({
             objectPosition: "center",
           }}
         />
-
         {/* Subtle dark vignette overlay when split */}
         <div
           className="absolute inset-0 pointer-events-none transition-opacity duration-700"
@@ -77,11 +86,9 @@ export default function Video({
         />
       </div>
 
-      {/* ════════════════════════════════════════
-          RIGHT CONTENT PANEL (Structured like About's left component)
-      ════════════════════════════════════════ */}
+      {/* Right content panel */}
       <div
-        className="relative z-20 flex flex-col justify-center min-h-screen "
+        className="hidden md:flex relative z-20 flex-col justify-center min-h-screen"
         style={{
           marginLeft: "auto",
           width: "46%",
@@ -92,7 +99,8 @@ export default function Video({
           opacity: isSplit ? 1 : 0,
           transform: isSplit ? "translateX(0)" : "translateX(90px)",
           pointerEvents: isSplit ? "auto" : "none",
-          transition: "opacity 0.95s cubic-bezier(0.16, 1, 0.28, 1), transform 0.95s cubic-bezier(0.16, 1, 0.28, 1)",
+          transition:
+            "opacity 0.95s cubic-bezier(0.16, 1, 0.28, 1), transform 0.95s cubic-bezier(0.16, 1, 0.28, 1)",
           transitionDelay: isSplit ? "0.15s" : "0s",
         }}
       >
@@ -104,23 +112,23 @@ export default function Video({
           ACID Record
         </h1>
 
-        {/* Cinematography & Video Production */}
-        <p className="text-white/55 text-[13px] leading-[1.5] max-w-[400px]"
-        style={{paddingTop:'1rem',paddingBottom:'0.5rem'}}>
-        
+        {/* Description */}
+        <p
+          className="text-white/55 text-[13px] leading-[1.5] max-w-[400px]"
+          style={{ paddingTop: "1rem", paddingBottom: "0.5rem" }}
+        >
           Menciptakan visual bergerak dengan kedalaman sinematik dan narasi visual
           yang kuat. Dari perencanaan konsep, sinematografi, hingga penyuntingan akhir,
           setiap frame dirancang untuk menyampaikan emosi dan pesan secara mendalam.
         </p>
 
-        {/* 2-column: Pengalaman / Bidang Fokus */}
+        {/* 2-col grid */}
         <div
-          className="grid grid-cols-2 gap-x-6 gap-y-5 "
-          style={{ paddingTop: "clamp(0.5rem, 0.5vw, 1rem)", paddingBottom: '0rem' }}
+          className="grid grid-cols-2 gap-x-6 gap-y-5"
+          style={{ paddingTop: "clamp(0.5rem, 0.5vw, 1rem)", paddingBottom: "0rem" }}
         >
-          {/* Col 1 */}
           <div>
-            <h3 className="text-white font-bold text-sm ">Fokus &amp; Peran :</h3>
+            <h3 className="text-white font-bold text-sm">Fokus &amp; Peran :</h3>
             <div className="text-white/55 text-[12px] leading-relaxed space-y-2">
               <div>
                 <p>Visual Framing &amp; Lighting</p>
@@ -128,10 +136,9 @@ export default function Video({
             </div>
           </div>
 
-          {/* Col 2 */}
           <div className="flex flex-col gap-5">
             <div>
-              <h3 className="text-white font-bold text-sm ">Produksi :</h3>
+              <h3 className="text-white font-bold text-sm">Produksi :</h3>
               <div className="text-white/55 text-[12px] leading-relaxed space-y-2">
                 <div>
                   <p>Social Media Reels &amp; Ads</p>
@@ -141,9 +148,139 @@ export default function Video({
           </div>
         </div>
 
-        {/* Button placed at bottom right of right card */}
+        {/* Instagram Button */}
         <div className="flex justify-end pt-8">
           <Button />
+        </div>
+      </div>
+
+      {/* ════════════════════════════════════════════════════════
+          MOBILE VIEW  (block md:hidden)
+          Always rendered — animated via CSS transitions exactly
+          like the desktop, driven by isSplit state.
+      ════════════════════════════════════════════════════════ */}
+      <div className="block md:hidden absolute inset-0 w-full h-full z-10">
+
+        {/* ── Mobile Video Card ──
+            Not split → fullscreen (top:0, left:0, w:100%, h:100%, radius:0)
+            Split     → small top card (top:3.5vh, centered 90%, h:28vh, radius:1rem)
+            Same cubic-bezier transition as desktop video card
+        */}
+        <div
+          style={{
+            position: "absolute",
+            top: isSplit ? "3.5vh" : "0",
+            left: isSplit ? "5%" : "0",
+            width: isSplit ? "90%" : "100%",
+            height: isSplit ? "28vh" : "100%",
+            borderRadius: isSplit ? "1rem" : "0px",
+            boxShadow: isSplit
+              ? "0 12px 40px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.1)"
+              : "none",
+            overflow: "hidden",
+            transition: "top 0.45s cubic-bezier(0.16, 1, 0.28, 1), left 0.45s cubic-bezier(0.16, 1, 0.28, 1), width 0.45s cubic-bezier(0.16, 1, 0.28, 1), height 0.45s cubic-bezier(0.16, 1, 0.28, 1), border-radius 0.45s cubic-bezier(0.16, 1, 0.28, 1), box-shadow 0.45s cubic-bezier(0.16, 1, 0.28, 1)",
+          }}
+        >
+          <video
+            ref={mobileVideoRef}
+            src="/assets/video.mp4"
+            loop
+            muted
+            playsInline
+            preload="auto"
+            className="w-full h-full object-cover object-center"
+          />
+          {/* Vignette — fades in when split, same as desktop */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              opacity: isSplit ? 0.2 : 0,
+              background: "linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 60%)",
+              transition: "opacity 0.7s ease",
+            }}
+          />
+        </div>
+
+        {/* ── Mobile Content Panel ──
+            Not split → hidden below (translateY(60px) + opacity:0)
+            Split     → slides up into view (translateY(0) + opacity:1)
+            Mirrors the desktop right panel slide-in with same easing & delay
+        */}
+        <div
+          style={{
+            position: "absolute",
+            /* Start just below the video card */
+            top: "calc(3.5vh + 28vh + 1.5rem)",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            overflowY: "visible",
+            touchAction: "pan-y",
+            padding: "0 1.5rem 2.5rem",
+            opacity: isSplit ? 1 : 0,
+            transform: isSplit ? "translateY(0)" : "translateY(60px)",
+            pointerEvents: isSplit ? "auto" : "none",
+            transition:
+              "opacity 0.45s cubic-bezier(0.16, 1, 0.28, 1), transform 0.45s cubic-bezier(0.16, 1, 0.28, 1)",
+            transitionDelay: isSplit ? "0.08s" : "0s",
+          }}
+        >
+          {/* Title */}
+          <h1 className="font-black text-red-700 leading-none mb-3 tracking-tight text-[2.2rem]">
+            ACID Record
+          </h1>
+
+          {/* Description */}
+          <p className="text-white/60 text-[12px] leading-relaxed mb-5">
+            Menciptakan visual bergerak dengan kedalaman sinematik dan narasi
+            visual yang kuat. Dari perencanaan konsep, sinematografi, hingga
+            penyuntingan akhir, setiap frame dirancang untuk menyampaikan
+            emosi dan pesan secara mendalam.
+          </p>
+
+          {/* 2-col grid */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 mb-6">
+            <div>
+              <h3 className="text-white font-bold text-xs mb-1">Fokus &amp; Peran :</h3>
+              <p className="text-white/55 text-[11px] leading-snug">
+                Visual Framing &amp; Lighting
+              </p>
+            </div>
+            <div>
+              <h3 className="text-white font-bold text-xs mb-1">Produksi :</h3>
+              <p className="text-white/55 text-[11px] leading-snug">
+                Social Media Reels &amp; Ads
+              </p>
+            </div>
+          </div>
+
+          {/* Instagram button */}
+          <div className="flex justify-start pt-2">
+            <a
+              href="https://www.instagram.com/acid.record"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-[#e62626] active:opacity-70 transition-opacity"
+            >
+              <span className="font-bold text-base tracking-wider uppercase underline underline-offset-4">
+                INSTAGRAM
+              </span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={3}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M14 5l7 7m0 0l-7 7m7-7H3"
+                />
+              </svg>
+            </a>
+          </div>
         </div>
       </div>
     </section>

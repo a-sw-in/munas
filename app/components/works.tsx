@@ -81,7 +81,6 @@ const SLICES = 8;
 const CAROUSEL_END = 6.0;   // 100% of carousel (Card 6 in center)
 const EXPAND_END   = 7.4;   // Fullscreen window expansion complete
 const REAL_MAX     = EXPAND_END; // Maximum scroll position
-const THRESHOLD_25 = 1.25;  // Entrance from previous section (Video Minimized)
 
 export interface WorkProps {
   isActive?: boolean;
@@ -101,15 +100,24 @@ export default function Work({
   const targetPos = useRef(0);
   const animFrame = useRef<number | null>(null);
 
-  // Drag tracking
-  const isDragging = useRef(false);
-  const dragStartX = useRef(0);
-  const dragStartY = useRef(0);
-  const dragStartPos = useRef(0);
-  const lastX = useRef(0);
-  const lastY = useRef(0);
-  const velocity = useRef(0);
-  const hasTriggeredPrev = useRef(false);
+  // Discrete swipe tracking: no continuous touch sync during dragging
+  const isPointerDown = useRef(false);
+  const swipeStartX = useRef(0);
+  const swipeStartY = useRef(0);
+  const swipeStartTime = useRef(0);
+  const hasSwiped = useRef(false);
+  const lastActionTime = useRef(0);
+
+  // Ignore first scroll on PC after entering Works
+  const hasIgnoredFirstScroll = useRef(false);
+  const firstScrollEndTime = useRef(0);
+
+  useEffect(() => {
+    if (isActive) {
+      hasIgnoredFirstScroll.current = false;
+      firstScrollEndTime.current = 0;
+    }
+  }, [isActive]);
 
   // Card spacing & Viewport tracking
   const [cardSpacing, setCardSpacing] = useState(540);
@@ -141,22 +149,20 @@ export default function Work({
     return () => window.removeEventListener("resize", updateDimensions);
   }, []);
 
-  // Dynamic smooth spring physics: 0.082 on laptop wheel/mouse (silky, weighted), 0.11 on mobile touch
-  const isTouchRef = useRef(false);
-
-  // Velvety smooth spring physics animation loop
+  // Smooth animation loop to glide the card cleanly to the center
   const startPhysics = useCallback(() => {
     if (animFrame.current) return;
 
     const tick = () => {
       const diff = targetPos.current - currentPosRef.current;
-      if (Math.abs(diff) < 0.0003) {
+      if (Math.abs(diff) < 0.001) {
         currentPosRef.current = targetPos.current;
         setCurrentPos(targetPos.current);
         animFrame.current = null;
         return;
       }
-      const ease = isTouchRef.current ? 0.11 : 0.082;
+      const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+      const ease = isMobile ? 0.18 : 0.15;
       currentPosRef.current += diff * ease;
       setCurrentPos(currentPosRef.current);
       animFrame.current = requestAnimationFrame(tick);
@@ -165,210 +171,191 @@ export default function Work({
     animFrame.current = requestAnimationFrame(tick);
   }, []);
 
-  // On mobile phone, immediately start at first card so entrance is fast and visible without dragging 100vh
-  useEffect(() => {
-    if (isActive && typeof window !== "undefined" && window.innerWidth < 768) {
-      if (currentPosRef.current < THRESHOLD_25) {
-        currentPosRef.current = THRESHOLD_25;
-        targetPos.current = THRESHOLD_25;
-        setCurrentPos(THRESHOLD_25);
-      }
-    }
-  }, [isActive]);
+  // Navigate directly to an integer card index (centering it)
+  const goToCard = useCallback((index: number) => {
+    const next = Math.max(0, Math.min(REAL_MAX, index));
+    targetPos.current = next;
+    startPhysics();
+  }, [startPhysics]);
 
-  // Update entrance & exit ratios whenever currentPos changes
+  // Swipe Forward: advance to next card (or expand to VideoWorks from card 6)
+  const nextCard = useCallback(() => {
+    if (currentPosRef.current >= EXPAND_END - 0.05) return;
+    const cur = Math.round(targetPos.current);
+    if (cur >= CAROUSEL_END) {
+      goToCard(EXPAND_END);
+    } else {
+      goToCard(cur + 1);
+    }
+  }, [goToCard]);
+
+  // Swipe Backward: return to previous card (or return to previous section at card 0)
+  const prevCard = useCallback(() => {
+    if (currentPosRef.current >= EXPAND_END - 0.05) return;
+    const cur = Math.round(targetPos.current);
+    if (cur <= 0) {
+      if (onPrevSection) onPrevSection();
+    } else {
+      goToCard(cur - 1);
+    }
+  }, [goToCard, onPrevSection]);
+
+  // Unified swipe action with debouncing to ensure exactly 1 card per swipe
+  const triggerSwipe = useCallback((direction: "next" | "prev") => {
+    const now = performance.now();
+    if (now - lastActionTime.current < 280) return;
+    lastActionTime.current = now;
+
+    if (direction === "next") {
+      nextCard();
+    } else {
+      prevCard();
+    }
+  }, [nextCard, prevCard]);
+
+  // When Works section becomes active, ensure Card 0 is centered
   useEffect(() => {
-    const entranceProgress = Math.max(
-      0,
-      Math.min(1, currentPos / THRESHOLD_25)
-    );
+    if (isActive) {
+      targetPos.current = 0;
+      currentPosRef.current = 0;
+      setCurrentPos(0);
+      if (onEntranceProgress) onEntranceProgress(1);
+    }
+  }, [isActive, onEntranceProgress]);
+
+  // Update exit ratio whenever currentPos changes
+  useEffect(() => {
     const expandProgress = Math.max(
       0,
       Math.min(1, (currentPos - CAROUSEL_END) / (EXPAND_END - CAROUSEL_END))
     );
-
-    if (onEntranceProgress) onEntranceProgress(entranceProgress);
     if (onExitProgress) onExitProgress(expandProgress);
-  }, [currentPos, onEntranceProgress, onExitProgress]);
+  }, [currentPos, onExitProgress]);
 
-  // Pointer drag handlers (support touch and mouse seamlessly)
+  // Pointer swipe handlers:
+  // Discrete swipe recognition - NO continuous touch sync during dragging!
   const onPointerDown = (e: React.PointerEvent) => {
     if (currentPosRef.current >= EXPAND_END - 0.05) return;
-    isTouchRef.current = e.pointerType === "touch";
-    isDragging.current = true;
-    dragStartX.current = e.clientX;
-    dragStartY.current = e.clientY;
-    lastX.current = e.clientX;
-    lastY.current = e.clientY;
-    dragStartPos.current = targetPos.current;
-    velocity.current = 0;
+    isPointerDown.current = true;
+    hasSwiped.current = false;
+    swipeStartX.current = e.clientX;
+    swipeStartY.current = e.clientY;
+    swipeStartTime.current = performance.now();
     try {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     } catch {}
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!isDragging.current) return;
-    const deltaX = e.clientX - dragStartX.current;
-    velocity.current = lastX.current - e.clientX;
-    lastX.current = e.clientX;
+    if (!isPointerDown.current || hasSwiped.current) return;
+    if (currentPosRef.current >= EXPAND_END - 0.05) return;
 
-    let step: number;
-    if (e.pointerType === "mouse") {
-      // Laptop mouse drag: pure horizontal movement
-      step = -deltaX / cardSpacing;
-    } else {
-      // Touch drag on phone: responsive swipe
-      const deltaY = e.clientY - dragStartY.current;
-      lastY.current = e.clientY;
-      const dominant = Math.abs(deltaX) >= Math.abs(deltaY) ? -deltaX : -deltaY * 1.25;
-      step = dominant / cardSpacing;
+    const dx = e.clientX - swipeStartX.current;
+    const dy = e.clientY - swipeStartY.current;
+
+    // Movement threshold to trigger swipe (45px)
+    const SWIPE_THRESHOLD = 45;
+    if (Math.abs(dx) >= SWIPE_THRESHOLD || Math.abs(dy) >= SWIPE_THRESHOLD) {
+      hasSwiped.current = true;
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        // Horizontal swipe: left swipe advances to next card, right swipe goes to prev
+        if (dx < 0) triggerSwipe("next");
+        else triggerSwipe("prev");
+      } else {
+        // Vertical swipe: swipe up advances to next card, swipe down goes to prev
+        if (dy < 0) triggerSwipe("next");
+        else triggerSwipe("prev");
+      }
     }
-
-    let nextPos = dragStartPos.current + step;
-    // Expanding into VideoWorks from Card 6
-    if (dragStartPos.current >= CAROUSEL_END - 0.25 && step > 0.18) {
-      nextPos = Math.min(REAL_MAX, CAROUSEL_END + step * 1.3);
-    }
-
-    targetPos.current = Math.max(0, Math.min(REAL_MAX, nextPos));
-    startPhysics();
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
-    if (!isDragging.current) return;
-    isDragging.current = false;
+    if (!isPointerDown.current) return;
+    isPointerDown.current = false;
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {}
-    const momentumDivisor = e.pointerType === "mouse" ? cardSpacing * 0.85 : cardSpacing * 0.7;
-    const momentum = velocity.current / momentumDivisor;
-    let nextTarget = targetPos.current + momentum;
 
-    // When swiping forward on or near Card 6, cleanly expand to fullscreen VideoWorks
-    if (dragStartPos.current >= CAROUSEL_END - 0.3 && nextTarget > CAROUSEL_END + 0.3) {
-      nextTarget = EXPAND_END;
-    } else if (nextTarget > CAROUSEL_END && nextTarget < CAROUSEL_END + 0.3) {
-      nextTarget = CAROUSEL_END;
+    // Check for quick flick gesture if movement threshold wasn't hit during move
+    if (!hasSwiped.current && currentPosRef.current < EXPAND_END - 0.05) {
+      const dx = e.clientX - swipeStartX.current;
+      const dy = e.clientY - swipeStartY.current;
+      const dt = performance.now() - swipeStartTime.current;
+
+      if (dt < 280 && (Math.abs(dx) > 20 || Math.abs(dy) > 20)) {
+        hasSwiped.current = true;
+        if (Math.abs(dx) >= Math.abs(dy)) {
+          if (dx < 0) triggerSwipe("next");
+          else triggerSwipe("prev");
+        } else {
+          if (dy < 0) triggerSwipe("next");
+          else triggerSwipe("prev");
+        }
+      }
     }
-
-    targetPos.current = Math.max(
-      0,
-      Math.min(REAL_MAX, nextTarget)
-    );
-    startPhysics();
   };
 
-  // Keyboard arrows
+  // Keyboard navigation: Left/Right/Up/Down moves cleanly card-by-card
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (currentPosRef.current >= EXPAND_END - 0.05) return;
-      if (e.key === "ArrowRight") {
-        targetPos.current = Math.min(REAL_MAX, targetPos.current + 1);
-        startPhysics();
-      } else if (e.key === "ArrowLeft") {
-        targetPos.current = Math.max(0, targetPos.current - 1);
-        startPhysics();
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        triggerSwipe("next");
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        triggerSwipe("prev");
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [startPhysics]);
+  }, [triggerSwipe]);
 
-  // Wheel — continuous proportional movement
+  // Wheel — discrete card-by-card snap
   useEffect(() => {
     if (!isActive) return;
 
     const onWheel = (e: WheelEvent) => {
-      isTouchRef.current = false;
-      // If VideoWorks is expanded into fullscreen, VideoWorks controls its own wheel
       if (currentPosRef.current >= EXPAND_END - 0.05) return;
 
       let dy = e.deltaY;
-      if (e.deltaMode === 1) dy *= 32;
-      else if (e.deltaMode === 2) dy *= window.innerHeight;
+      let dx = e.deltaX;
+      if (e.deltaMode === 1) {
+        dy *= 32;
+        dx *= 32;
+      } else if (e.deltaMode === 2) {
+        dy *= window.innerHeight;
+        dx *= window.innerWidth;
+      }
 
-      const delta = Math.max(-0.25, Math.min(0.25, dy * 0.0011));
+      const dominant = Math.abs(dx) > Math.abs(dy) ? dx : dy;
+      if (Math.abs(dominant) < 20) return;
 
-      if (dy > 0) {
-        hasTriggeredPrev.current = false;
-        if (targetPos.current < REAL_MAX) {
-          targetPos.current = Math.min(REAL_MAX, targetPos.current + delta);
-          startPhysics();
-        }
+      // On PC: Ignore the first scroll gesture upon entering Works
+      const now = performance.now();
+      if (!hasIgnoredFirstScroll.current) {
+        hasIgnoredFirstScroll.current = true;
+        firstScrollEndTime.current = now;
+        return;
+      }
+      if (now - firstScrollEndTime.current < 450) {
+        firstScrollEndTime.current = now;
+        return;
+      }
+
+      if (dominant > 0) {
+        triggerSwipe("next");
       } else {
-        if (targetPos.current > 0) {
-          targetPos.current = Math.max(0, targetPos.current + delta);
-          startPhysics();
-        } else if (currentPosRef.current < 0.05 && !hasTriggeredPrev.current) {
-          hasTriggeredPrev.current = true;
-          if (onPrevSection) onPrevSection();
-        }
+        triggerSwipe("prev");
       }
     };
 
     window.addEventListener("wheel", onWheel, { passive: true });
     return () => window.removeEventListener("wheel", onWheel);
-  }, [isActive, onPrevSection, startPhysics]);
-
-  // Touch swipe fallback — continuous responsive proportional movement
-  useEffect(() => {
-    if (!isActive) return;
-    let lastY = 0;
-    let lastX = 0;
-
-    const onTouchStart = (e: TouchEvent) => {
-      isTouchRef.current = true;
-      lastY = e.touches[0].clientY;
-      lastX = e.touches[0].clientX;
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (currentPosRef.current >= EXPAND_END - 0.05) return;
-
-      const dy = lastY - e.touches[0].clientY;
-      const dx = lastX - e.touches[0].clientX;
-      lastY = e.touches[0].clientY;
-      lastX = e.touches[0].clientX;
-
-      // Dominant swipe direction (horizontal swipe left/right or vertical swipe up/down)
-      const effectiveDelta = Math.abs(dx) >= Math.abs(dy) ? dx : dy;
-      const delta = Math.max(-0.4, Math.min(0.4, (effectiveDelta / cardSpacing) * 1.3));
-
-      if (effectiveDelta > 0) {
-        hasTriggeredPrev.current = false;
-        if (targetPos.current < REAL_MAX) {
-          // When at or near Card 6 (Video Works), swiping forward cleanly triggers expansion
-          if (targetPos.current >= CAROUSEL_END - 0.25) {
-            targetPos.current = EXPAND_END;
-          } else {
-            targetPos.current = Math.min(REAL_MAX, targetPos.current + delta);
-          }
-          startPhysics();
-        }
-      }
-    };
-
-    window.addEventListener("touchstart", onTouchStart, { passive: true });
-    window.addEventListener("touchmove", onTouchMove, { passive: true });
-    return () => {
-      window.removeEventListener("touchstart", onTouchStart);
-      window.removeEventListener("touchmove", onTouchMove);
-    };
-  }, [isActive, cardSpacing, onPrevSection, startPhysics]);
+  }, [isActive, triggerSwipe]);
 
   // Active project for caption
   const clampedPos = Math.max(0, Math.min(TOTAL - 1, currentPos));
   const normalizedIndex = Math.min(TOTAL - 1, Math.max(0, Math.round(clampedPos)));
   const activeProject = PROJECTS[normalizedIndex];
-
-  // Entrance from previous section (0%→20% scroll)
-  const entranceRatio = Math.max(
-    0,
-    Math.min(1, (THRESHOLD_25 - currentPos) / THRESHOLD_25)
-  );
-  const stageTranslateY = entranceRatio * 100;
-  const stageOpacity = Math.max(0, Math.min(1, 1 - entranceRatio * 1.15));
 
   // Expansion of the last card window into fullscreen (6.0 → 7.4)
   const expandProgress = Math.max(
@@ -385,7 +372,7 @@ export default function Work({
   // Fading of other carousel elements as VideoWorks window expands
   const otherCardsFade = Math.max(0, 1 - expandProgress * 2.5);
   const captionFade = Math.max(0, 1 - expandProgress * 3.0);
-  const glowFade = 0.8 * stageOpacity * Math.max(0, 1 - expandProgress * 2.0);
+  const glowFade = 0.8 * Math.max(0, 1 - expandProgress * 2.0);
 
   return (
     <section
@@ -408,8 +395,6 @@ export default function Work({
       <div
         className="relative w-full max-w-7xl flex flex-col items-center justify-center z-10 px-4"
         style={{
-          transform: stageTranslateY === 0 ? "none" : `translateY(${stageTranslateY}vh)`,
-          opacity: stageOpacity,
           willChange: "transform, opacity",
         }}
       >

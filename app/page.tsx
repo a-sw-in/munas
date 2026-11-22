@@ -52,6 +52,13 @@ export default function Home() {
     el.style.opacity    = direction === 'out' ? '0' : '1';
   };
 
+  const slideWorks = (el: HTMLDivElement | null, direction: 'in' | 'out') => {
+    if (!el) return;
+    el.style.transition = `transform ${SLIDE_MS}ms cubic-bezier(0.22, 1, 0.36, 1), opacity ${SLIDE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+    el.style.transform  = direction === 'in' ? 'translateY(0%)' : 'translateY(100%)';
+    el.style.opacity    = direction === 'in' ? '1' : '0';
+  };
+
   /* ── 0 → 1: Home → About ── */
   const goToAbout = useCallback(() => {
     setAboutShouldAnimate(true);
@@ -70,7 +77,7 @@ export default function Home() {
     setOpacity(videoRef.current, 1, 0);
     if (worksRef.current) {
       worksRef.current.style.transition = 'none';
-      worksRef.current.style.transform  = 'none';
+      worksRef.current.style.transform  = 'translateY(100%)';
       worksRef.current.style.opacity    = '0';
     }
     slideVideo(videoRef.current, 'in');
@@ -87,37 +94,37 @@ export default function Home() {
     setVideoSplit(false);
   }, []);
 
-  /* ── 3 → 4: Video Minimized → Works (Scroll-driven entrance handled by Works) ── */
+  /* ── 3 → 4: Video Minimized → Works (Fade in & bottom-to-up transition) ── */
   const goToWorks = useCallback(() => {
     setSection(3);
-    if (worksRef.current) {
-      worksRef.current.style.transition = 'none';
-      worksRef.current.style.transform  = 'none';
-      worksRef.current.style.opacity    = '1';
+    setVideoPlaying(false);
+    slideWorks(worksRef.current, 'in');
+    if (videoRef.current) {
+      videoRef.current.style.transition = `transform ${SLIDE_MS}ms cubic-bezier(0.22, 1, 0.36, 1), opacity ${FADE_MS}ms ease-in-out`;
+      videoRef.current.style.opacity    = '0';
+      videoRef.current.style.transform  = 'translateY(-20%)';
+      videoRef.current.style.pointerEvents = 'none';
     }
   }, []);
 
-  /* ── 4 → 3: Works → Video Minimized (Back when scroll reaches 0) ── */
+  /* ── 4 → 3: Works → Video Minimized (Back to video with smooth downward slide) ── */
   const goBackToVideo = useCallback(() => {
-    // Lock transitions for 850ms so scroll momentum does not carry over to big player
+    // Lock transitions for cooldown duration
     isLockedRef.current = true;
     setTimeout(() => {
       isLockedRef.current = false;
-    }, 850);
+    }, LOCK_MS);
 
     stepRef.current = 3;
     setVideoPlaying(true);
     setVideoSplit(true);
 
-    // Fast, crisp fade so works disappears cleanly and mini player is instantly ready
-    if (worksRef.current) {
-      worksRef.current.style.transition = 'opacity 180ms ease-out';
-      worksRef.current.style.opacity    = '0';
-      worksRef.current.style.pointerEvents = 'none';
-    }
+    // Smooth, silky transition back to video
+    slideWorks(worksRef.current, 'out');
     if (videoRef.current) {
-      videoRef.current.style.transition = 'opacity 180ms ease-out';
+      videoRef.current.style.transition = `transform ${SLIDE_MS}ms cubic-bezier(0.22, 1, 0.36, 1), opacity ${SLIDE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`;
       videoRef.current.style.opacity    = '1';
+      videoRef.current.style.transform  = 'translateX(0%) translateY(0%)';
       videoRef.current.style.pointerEvents = 'auto';
     }
     setSection(2);
@@ -321,7 +328,7 @@ export default function Home() {
       <div
         ref={worksRef}
         className="fixed inset-0 z-40 overflow-hidden"
-        style={{ opacity: 0, pointerEvents: section === 3 ? 'auto' : 'none' }}
+        style={{ opacity: 0, transform: 'translateY(100%)', pointerEvents: section === 3 ? 'auto' : 'none' }}
       >
         <Work
           isActive={section === 3}
