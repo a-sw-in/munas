@@ -7,7 +7,6 @@ import HeroSection from "./components/home";
 import About from "./components/about";
 import Video from "./components/video";
 import Work from "./components/works";
-import MediaPreloader from "./components/media-preloader";
 
 const FADE_MS  = 480;
 const SLIDE_MS = 950; // Slower, silky smooth slide between About and Video
@@ -291,9 +290,6 @@ export default function Home() {
 
   return (
     <>
-      {/* ── Client Media Preloader (Uiverse.io loader) ── */}
-      <MediaPreloader />
-
       {/* ── Home (z-10) ── */}
       <div
         ref={homeRef}
