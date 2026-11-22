@@ -312,9 +312,13 @@ export default function VideoWorks({
     return () => video.removeEventListener("timeupdate", handleTimeUpdate);
   }, []);
 
-  // Single small scroll triggers wave step to next/previous video OR footer transition at bottom
+  // Calibrated card-by-card snap with reduced scroll sensitivity on PC
   useEffect(() => {
     if (!isExpanded || isZoomed) return;
+
+    let wheelAccumulator = 0;
+    let wheelCooldown = 0;
+    let resetTimer: NodeJS.Timeout | null = null;
 
     const handleWheel = (e: WheelEvent) => {
       let dy = e.deltaY;
@@ -322,11 +326,35 @@ export default function VideoWorks({
       else if (e.deltaMode === 2) dy *= window.innerHeight;
 
       // Ignore micro-jitters
-      if (Math.abs(dy) < 6) return;
+      if (Math.abs(dy) < 8) return;
+
+      const now = performance.now();
+
+      // Guard against wheel momentum immediately after expanding into VideoWorks
+      if (Date.now() - expandedAtRef.current < 550) return;
+
+      // If already in cooldown from a video switch or footer transition, ignore momentum
+      if (now < wheelCooldown || scrollLockRef.current) return;
+
+      // Accumulate scroll input to prevent unintended micro-scrolls
+      wheelAccumulator += dy;
+
+      if (resetTimer) clearTimeout(resetTimer);
+      resetTimer = setTimeout(() => {
+        wheelAccumulator = 0;
+      }, 200);
+
+      // Substantially reduced sensitivity threshold (requires deliberate 60px gesture on PC)
+      const WHEEL_THRESHOLD = 60;
+      if (Math.abs(wheelAccumulator) < WHEEL_THRESHOLD) return;
+
+      const isDown = wheelAccumulator > 0;
+      wheelAccumulator = 0;
 
       // ── PHASE: FOOTER EXPANDED OR EXPANDING ──
       if (footerProgressRef.current > 0.001) {
-        if (dy > 0) {
+        wheelCooldown = now + 620;
+        if (isDown) {
           // Scroll down: expand footer window decisively to full
           targetFooterProgress.current = 1;
           startFooterPhysics();
@@ -338,12 +366,10 @@ export default function VideoWorks({
         return;
       }
 
-      // If already transitioning, lock out momentum spam
-      if (scrollLockRef.current) return;
-
-      if (dy > 0) {
+      if (isDown) {
         // Scroll DOWN -> wave transition to next video
         if (activeIndexRef.current < FEATURED_VIDEOS.length - 1) {
+          wheelCooldown = now + 620;
           scrollLockRef.current = true;
           goToProject(activeIndexRef.current + 1);
           setTimeout(() => {
@@ -351,12 +377,14 @@ export default function VideoWorks({
           }, 560);
         } else {
           // Reached bottom of video works -> scroll down initiates swift Footer slit opening!
+          wheelCooldown = now + 620;
           targetFooterProgress.current = 1;
           startFooterPhysics();
         }
       } else {
         // Scroll UP -> wave transition to previous video or return to carousel
         if (activeIndexRef.current > 0) {
+          wheelCooldown = now + 620;
           scrollLockRef.current = true;
           goToProject(activeIndexRef.current - 1);
           setTimeout(() => {
@@ -370,7 +398,10 @@ export default function VideoWorks({
     };
 
     window.addEventListener("wheel", handleWheel, { passive: true });
-    return () => window.removeEventListener("wheel", handleWheel);
+    return () => {
+      window.removeEventListener("wheel", handleWheel);
+      if (resetTimer) clearTimeout(resetTimer);
+    };
   }, [isExpanded, isZoomed, goToProject, onReturn, startFooterPhysics]);
 
   // Expanded timestamp to prevent entry gestures from leaking into onReturn
@@ -593,7 +624,6 @@ export default function VideoWorks({
             const scale = Math.max(0.72, Math.pow(Math.cos(angleRad), 0.65));
             const opacity = Math.max(0, Math.pow(Math.cos(angleRad), 2.2));
             const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-            const blur = isMobile ? 0 : Math.max(0, Math.min(6, (Math.abs(offset) - 0.35) * 3.5));
             const isActive = index === activeIndex;
             const zIndex = Math.round((1 - Math.abs(offset) / 3) * 50);
 
@@ -624,7 +654,7 @@ export default function VideoWorks({
                   left: "50%",
                   transform: `translate(-50%, -50%) translate3d(0, ${waveY}px, ${waveCrestZ}px) rotateX(${waveTiltX}deg) rotateZ(${waveTiltZ}deg) scale(${scale})`,
                   opacity: isActive && isZoomed ? 0.2 : opacity,
-                  filter: blur > 0 ? `blur(${blur}px)` : "none",
+                  filter: "none",
                   zIndex,
                   backgroundColor: "#0d0e12",
                   border: isActive
