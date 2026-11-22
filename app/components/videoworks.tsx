@@ -390,29 +390,32 @@ export default function VideoWorks({
     }
   }, [isExpanded]);
 
-  // Touch gesture swipe: 1 swipe = 1 wave video transition OR footer transition at bottom
+  // Touch gesture swipe on mobile: 1 clean swipe = 1 video transition
   useEffect(() => {
     if (!isExpanded || isZoomed) return;
     let startY = 0;
+    let startX = 0;
 
     const handleTouchStart = (e: TouchEvent) => {
       startY = e.touches[0].clientY;
+      startX = e.touches[0].clientX;
     };
 
-    const handleTouchMove = (e: TouchEvent) => {
+    const handleTouchEnd = (e: TouchEvent) => {
       if (scrollLockRef.current) return;
       // Guard against touch gestures leaking immediately after expanding
-      if (Date.now() - expandedAtRef.current < 550) return;
+      if (Date.now() - expandedAtRef.current < 500) return;
 
-      const dy = startY - e.touches[0].clientY;
+      const dy = startY - e.changedTouches[0].clientY;
+      const dx = startX - e.changedTouches[0].clientX;
 
-      if (Math.abs(dy) < 26) return;
-      startY = e.touches[0].clientY;
+      // Ignore micro taps or horizontal swipes
+      if (Math.abs(dy) < 30 || Math.abs(dy) < Math.abs(dx)) return;
 
       if (dy > 0) {
         // Swipe UP -> next video OR footer opening at bottom
         if (footerProgressRef.current > 0.001) {
-          targetFooterProgress.current = Math.min(1, targetFooterProgress.current + 0.2);
+          targetFooterProgress.current = Math.min(1, targetFooterProgress.current + 0.25);
           startFooterPhysics();
           return;
         }
@@ -421,16 +424,16 @@ export default function VideoWorks({
           goToProject(activeIndexRef.current + 1);
           setTimeout(() => {
             scrollLockRef.current = false;
-          }, 480);
+          }, 450);
         } else {
           // Bottom reached -> open footer window
-          targetFooterProgress.current = Math.min(1, targetFooterProgress.current + 0.2);
+          targetFooterProgress.current = Math.min(1, targetFooterProgress.current + 0.25);
           startFooterPhysics();
         }
       } else {
-        // Swipe DOWN -> previous video OR footer closing
+        // Swipe DOWN -> previous video OR footer closing OR return to carousel
         if (footerProgressRef.current > 0.001) {
-          targetFooterProgress.current = Math.max(0, targetFooterProgress.current - 0.2);
+          targetFooterProgress.current = Math.max(0, targetFooterProgress.current - 0.25);
           startFooterPhysics();
           return;
         }
@@ -439,9 +442,10 @@ export default function VideoWorks({
           goToProject(activeIndexRef.current - 1);
           setTimeout(() => {
             scrollLockRef.current = false;
-          }, 480);
+          }, 450);
         } else {
-          if (onReturn) {
+          // At project 0: deliberate downward swipe returns to carousel
+          if (dy < -45 && onReturn) {
             scrollLockRef.current = true;
             onReturn();
             setTimeout(() => {
@@ -453,10 +457,10 @@ export default function VideoWorks({
     };
 
     window.addEventListener("touchstart", handleTouchStart, { passive: true });
-    window.addEventListener("touchmove", handleTouchMove, { passive: true });
+    window.addEventListener("touchend", handleTouchEnd, { passive: true });
     return () => {
       window.removeEventListener("touchstart", handleTouchStart);
-      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
     };
   }, [isExpanded, isZoomed, goToProject, onReturn, startFooterPhysics]);
 

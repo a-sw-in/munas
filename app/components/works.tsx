@@ -165,6 +165,17 @@ export default function Work({
     animFrame.current = requestAnimationFrame(tick);
   }, []);
 
+  // On mobile phone, immediately start at first card so entrance is fast and visible without dragging 100vh
+  useEffect(() => {
+    if (isActive && typeof window !== "undefined" && window.innerWidth < 768) {
+      if (currentPosRef.current < THRESHOLD_25) {
+        currentPosRef.current = THRESHOLD_25;
+        targetPos.current = THRESHOLD_25;
+        setCurrentPos(THRESHOLD_25);
+      }
+    }
+  }, [isActive]);
+
   // Update entrance & exit ratios whenever currentPos changes
   useEffect(() => {
     const entranceProgress = Math.max(
@@ -300,60 +311,62 @@ export default function Work({
     return () => window.removeEventListener("wheel", onWheel);
   }, [isActive, onPrevSection, startPhysics]);
 
-  // Touch swipe fallback — continuous responsive proportional movement
+  // Touch swipe on mobile: 1 deliberate swipe = 1 card step or full VideoWorks expansion
   useEffect(() => {
     if (!isActive) return;
-    let lastY = 0;
-    let lastX = 0;
+    let touchStartX = 0;
+    let touchStartY = 0;
 
     const onTouchStart = (e: TouchEvent) => {
       isTouchRef.current = true;
-      lastY = e.touches[0].clientY;
-      lastX = e.touches[0].clientX;
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
     };
 
-    const onTouchMove = (e: TouchEvent) => {
+    const onTouchEnd = (e: TouchEvent) => {
       if (currentPosRef.current >= EXPAND_END - 0.05) return;
-      if (isDragging.current) return;
 
-      const dy = lastY - e.touches[0].clientY;
-      const dx = lastX - e.touches[0].clientX;
-      lastY = e.touches[0].clientY;
-      lastX = e.touches[0].clientX;
+      const dx = touchStartX - e.changedTouches[0].clientX;
+      const dy = touchStartY - e.changedTouches[0].clientY;
 
-      // Dominant swipe direction (horizontal swipe left/right or vertical swipe up/down)
-      const effectiveDelta = Math.abs(dx) >= Math.abs(dy) ? dx : dy;
-      const delta = Math.max(-0.4, Math.min(0.4, (effectiveDelta / cardSpacing) * 1.3));
+      // Ignore micro taps
+      if (Math.abs(dx) < 18 && Math.abs(dy) < 18) return;
 
-      if (effectiveDelta > 0) {
+      const isHorizontal = Math.abs(dx) >= Math.abs(dy);
+      const dist = isHorizontal ? dx : dy;
+
+      if (dist > 28) {
+        // Forward swipe: advance to next card OR expand if on Card 6
         hasTriggeredPrev.current = false;
-        if (targetPos.current < REAL_MAX) {
-          // When at or near Card 6 (Video Works), swiping forward cleanly triggers expansion
-          if (targetPos.current >= CAROUSEL_END - 0.25) {
-            targetPos.current = EXPAND_END;
-          } else {
-            targetPos.current = Math.min(REAL_MAX, targetPos.current + delta);
-          }
-          startPhysics();
+        if (targetPos.current >= CAROUSEL_END - 0.3) {
+          targetPos.current = EXPAND_END;
+        } else {
+          const next = Math.min(CAROUSEL_END, Math.floor(targetPos.current + 1.05));
+          targetPos.current = next;
         }
-      } else {
-        if (targetPos.current > 0) {
-          targetPos.current = Math.max(0, targetPos.current + delta);
+        startPhysics();
+      } else if (dist < -28) {
+        // Backward swipe: go to previous card OR return to Video Minimized
+        if (targetPos.current <= THRESHOLD_25 + 0.15) {
+          if (onPrevSection && !hasTriggeredPrev.current) {
+            hasTriggeredPrev.current = true;
+            onPrevSection();
+          }
+        } else {
+          const prev = Math.max(THRESHOLD_25, Math.ceil(targetPos.current - 1.05));
+          targetPos.current = prev;
           startPhysics();
-        } else if (currentPosRef.current < 0.1 && !hasTriggeredPrev.current) {
-          hasTriggeredPrev.current = true;
-          if (onPrevSection) onPrevSection();
         }
       }
     };
 
     window.addEventListener("touchstart", onTouchStart, { passive: true });
-    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("touchend", onTouchEnd, { passive: true });
     return () => {
       window.removeEventListener("touchstart", onTouchStart);
-      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
     };
-  }, [isActive, cardSpacing, onPrevSection, startPhysics]);
+  }, [isActive, onPrevSection, startPhysics]);
 
   // Active project for caption
   const clampedPos = Math.max(0, Math.min(TOTAL - 1, currentPos));
@@ -554,48 +567,57 @@ export default function Work({
                   ) : (
                     /* Project Image slices for 3D curved cylinder effect */
                     <>
-                      <div className="relative w-full h-full" style={{ transformStyle: "preserve-3d" }}>
-                        {Array.from({ length: SLICES }).map((_, s) => {
-                          const u = (s + 0.5) / SLICES - 0.5;
-                          const rotYSlice = isCenter
-                            ? 0
-                            : u * 22 * curvature * (isLeft ? 1 : isRight ? 1 : 0);
-                          const normX = isLeft
-                            ? s / (SLICES - 1)
-                            : (SLICES - 1 - s) / (SLICES - 1);
-                          const zSlice = isCenter
-                            ? 0
-                            : -Math.pow(normX, 1.6) * 38 * curvature;
-                          const ySlice = isCenter
-                            ? 0
-                            : (isLeft ? 1 : -1) * (1 - normX) * 5 * curvature;
+                      {viewport.w < 768 ? (
+                        <div
+                          className="w-full h-full bg-cover bg-center"
+                          style={{
+                            backgroundImage: `url("${project.image}")`,
+                          }}
+                        />
+                      ) : (
+                        <div className="relative w-full h-full" style={{ transformStyle: "preserve-3d" }}>
+                          {Array.from({ length: SLICES }).map((_, s) => {
+                            const u = (s + 0.5) / SLICES - 0.5;
+                            const rotYSlice = isCenter
+                              ? 0
+                              : u * 22 * curvature * (isLeft ? 1 : isRight ? 1 : 0);
+                            const normX = isLeft
+                              ? s / (SLICES - 1)
+                              : (SLICES - 1 - s) / (SLICES - 1);
+                            const zSlice = isCenter
+                              ? 0
+                              : -Math.pow(normX, 1.6) * 38 * curvature;
+                            const ySlice = isCenter
+                              ? 0
+                              : (isLeft ? 1 : -1) * (1 - normX) * 5 * curvature;
 
-                          return (
-                            <div
-                              key={s}
-                              suppressHydrationWarning
-                              className="absolute top-0 bottom-0 overflow-hidden pointer-events-none"
-                              style={{
-                                left: `${((s / SLICES) * 100).toFixed(2)}%`,
-                                width: `${((1 / SLICES) * 100 + 0.3).toFixed(2)}%`,
-                                transformOrigin: isLeft
-                                  ? "right center"
-                                  : isRight
-                                  ? "left center"
-                                  : "center center",
-                                transform: isCenter
-                                  ? "none"
-                                  : `translate3d(0px, ${ySlice.toFixed(2)}px, ${zSlice.toFixed(2)}px) rotateY(${rotYSlice.toFixed(2)}deg)`,
-                                backfaceVisibility: "hidden",
-                                backgroundImage: `url("${project.image}")`,
-                                backgroundSize: `${SLICES * 100}% 100%`,
-                                backgroundPosition: `${((s / (SLICES - 1)) * 100).toFixed(2)}% center`,
-                                backgroundRepeat: "no-repeat",
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
+                            return (
+                              <div
+                                key={s}
+                                suppressHydrationWarning
+                                className="absolute top-0 bottom-0 overflow-hidden pointer-events-none"
+                                style={{
+                                  left: `${((s / SLICES) * 100).toFixed(2)}%`,
+                                  width: `${((1 / SLICES) * 100 + 0.3).toFixed(2)}%`,
+                                  transformOrigin: isLeft
+                                    ? "right center"
+                                    : isRight
+                                    ? "left center"
+                                    : "center center",
+                                  transform: isCenter
+                                    ? "none"
+                                    : `translate3d(0px, ${ySlice.toFixed(2)}px, ${zSlice.toFixed(2)}px) rotateY(${rotYSlice.toFixed(2)}deg)`,
+                                  backfaceVisibility: "hidden",
+                                  backgroundImage: `url("${project.image}")`,
+                                  backgroundSize: `${SLICES * 100}% 100%`,
+                                  backgroundPosition: `${((s / (SLICES - 1)) * 100).toFixed(2)}% center`,
+                                  backgroundRepeat: "no-repeat",
+                                }}
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
 
                       {/* Dark vignette & specular highlight */}
                       <div
