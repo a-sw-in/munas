@@ -801,7 +801,7 @@ export default function VideoWorks({
         {/* Swipes out to RIGHT as footer expands                     */}
         {/* ========================================================= */}
         <section
-          className="relative w-full lg:w-1/2 h-[220px] sm:h-[320px] lg:h-[480px] flex items-center justify-center will-change-transform lg:ml-12 -mt-6 sm:-mt-2 lg:mt-0"
+          className="relative w-full lg:w-1/2 h-[220px] sm:h-[320px] lg:h-[480px] flex items-center justify-center will-change-transform lg:ml-12 mt-1 sm:mt-0"
           style={{
             perspective: "1200px",
             perspectiveOrigin: "50% 50%",
@@ -832,7 +832,7 @@ export default function VideoWorks({
                   isActive ? "cursor-default pointer-events-auto" : "pointer-events-none"
                 }`}
                 style={{
-                  top: isMobile ? "38%" : "50%",
+                  top: isMobile ? "46%" : "50%",
                   left: "50%",
                   transform: `translate(-50%, -50%) translate3d(0, ${textWaveY}px, 0) rotateX(${textTiltX}deg) scale(${scale})`,
                   opacity,
